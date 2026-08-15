@@ -1,0 +1,6 @@
+{
+  "name": "FormCraft AI - Doc to Google Form & Sheet Converter",
+  "description": "Convert documents, image scans, and client briefs into live Google Forms with connected Google Sheets, automated screening assessments, and live response sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
