@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { CreateFormResponse, SheetSyncResult } from '../types';
 import { getAccessToken } from '../lib/auth';
+import { copyTextToClipboard } from '../lib/clipboard';
 import {
   CheckCircle2,
   ExternalLink,
@@ -40,15 +41,17 @@ export const SuccessView: React.FC<SuccessViewProps> = ({ formData, onReset }) =
       ? `https://docs.google.com/spreadsheets/d/${formData.spreadsheetId}/edit`
       : undefined);
 
-  const copyFormLink = () => {
-    navigator.clipboard.writeText(formData.responderUri);
-    setCopiedFormLink(true);
-    setTimeout(() => setCopiedFormLink(false), 2500);
+  const copyFormLink = async () => {
+    if (formData.responderUri) {
+      await copyTextToClipboard(formData.responderUri);
+      setCopiedFormLink(true);
+      setTimeout(() => setCopiedFormLink(false), 2500);
+    }
   };
 
-  const copySheetLink = () => {
+  const copySheetLink = async () => {
     if (spreadsheetUrl) {
-      navigator.clipboard.writeText(spreadsheetUrl);
+      await copyTextToClipboard(spreadsheetUrl);
       setCopiedSheetLink(true);
       setTimeout(() => setCopiedSheetLink(false), 2500);
     }

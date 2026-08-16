@@ -1,16 +1,11 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
+import { auth } from './firebase';
 import {
-  getAuth,
   signInWithPopup,
   GoogleAuthProvider,
   onAuthStateChanged,
   User,
   signOut,
 } from 'firebase/auth';
-import firebaseConfig from '../../firebase-applet-config.json';
-
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-export const auth = getAuth(app);
 
 export const SCOPES = [
   'https://www.googleapis.com/auth/forms.body',
@@ -37,19 +32,35 @@ export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
 ) => {
-  return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user) {
-      if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
-      } else if (!isSigningIn) {
-        // If user is logged into Firebase Auth, we need a fresh token from a sign-in or cached
+  try {
+    return onAuthStateChanged(
+      auth,
+      async (user: User | null) => {
+        try {
+          if (user) {
+            if (cachedAccessToken) {
+              if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
+            } else if (!isSigningIn) {
+              // If user is logged into Firebase Auth, we need a fresh token from a sign-in or cached
+              if (onAuthFailure) onAuthFailure();
+            }
+          } else {
+            cachedAccessToken = null;
+            if (onAuthFailure) onAuthFailure();
+          }
+        } catch (e) {
+          console.warn('onAuthStateChanged error handled:', e);
+        }
+      },
+      (error) => {
+        console.warn('Firebase Auth state error:', error);
         if (onAuthFailure) onAuthFailure();
       }
-    } else {
-      cachedAccessToken = null;
-      if (onAuthFailure) onAuthFailure();
-    }
-  });
+    );
+  } catch (err) {
+    console.warn('initAuth error handled:', err);
+    return () => {};
+  }
 };
 
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {

@@ -1,18 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { User } from 'firebase/auth';
 import { initAuth, googleSignIn, getAccessToken, logout } from './lib/auth';
+import { saveSchema, getSchema } from './lib/persistence';
 import { Navbar } from './components/Navbar';
 import { Dropzone } from './components/Dropzone';
 import { ParsingProgress } from './components/ParsingProgress';
 import { SchemaEditor, AUTOSAVE_STORAGE_KEY, AUTOSAVE_TIMESTAMP_KEY } from './components/SchemaEditor';
 import { SuccessView } from './components/SuccessView';
 import { ApiKeyModal } from './components/ApiKeyModal';
+import { StressTestPanel } from './components/StressTestPanel';
 import { SmartTemplate } from './components/SampleDocs';
 import {
   ParsedFormSchema,
   CreateFormResponse,
   ConversionStep,
   BriefConfig,
+  Asset,
 } from './types';
 import {
   AlertCircle,
@@ -20,6 +23,8 @@ import {
   RotateCcw,
   Save,
   Trash2,
+  Key,
+  RefreshCw,
 } from 'lucide-react';
 
 const STORAGE_KEY_GEMINI = 'formcraft_gemini_api_key';
@@ -45,24 +50,48 @@ export default function App() {
   });
   const [hasEnvKey, setHasEnvKey] = useState<boolean>(true);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [isStressTestOpen, setIsStressTestOpen] = useState(false);
+  const [userAccessToken, setUserAccessToken] = useState<string | undefined>(undefined);
 
-  // Restore autosaved schema from local storage if available on load (prevents ghost pages / accidental loss)
+  // Sync user access token when logged in
   useEffect(() => {
-    try {
-      const savedSchemaRaw = localStorage.getItem(AUTOSAVE_STORAGE_KEY);
-      const savedTimestamp = localStorage.getItem(AUTOSAVE_TIMESTAMP_KEY);
-      if (savedSchemaRaw) {
-        const parsed = JSON.parse(savedSchemaRaw);
-        if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
-          setParsedSchema(parsed);
-          setStep('preview');
-          setRestoredDraftInfo(savedTimestamp ? `Autosaved draft restored (${savedTimestamp})` : 'Autosaved draft restored');
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to restore autosaved draft:', e);
+    if (user) {
+      getAccessToken()
+        .then((token) => setUserAccessToken(token || undefined))
+        .catch(() => setUserAccessToken(undefined));
+    } else {
+      setUserAccessToken(undefined);
     }
+  }, [user]);
+
+  // Restore autosaved schema from IndexedDB if available on load
+  useEffect(() => {
+    const restoreSchema = async () => {
+      try {
+        const savedSchema = await getSchema();
+        if (savedSchema && (savedSchema as any).questions && (savedSchema as any).questions.length > 0) {
+          setParsedSchema(savedSchema as any);
+          setStep('preview');
+          setRestoredDraftInfo('Autosaved draft restored from secure storage');
+        }
+      } catch (e) {
+        console.warn('Failed to restore autosaved draft from IndexedDB:', e);
+      }
+    };
+    restoreSchema();
   }, []);
+
+  // Effect to autosave schema when it changes with debouncing
+  useEffect(() => {
+    if (!parsedSchema) return;
+    const timer = setTimeout(() => {
+      saveSchema(parsedSchema).catch((err) => {
+        console.warn('Draft auto-persist notice:', err);
+      });
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [parsedSchema]);
 
   // Fetch backend Gemini configuration state
   useEffect(() => {
@@ -133,17 +162,37 @@ export default function App() {
     }
   };
 
-  // Full state reset
   const handleReset = () => {
+    if (filePreviewUrl) {
+      URL.revokeObjectURL(filePreviewUrl);
+    }
+    try {
+      localStorage.removeItem(AUTOSAVE_STORAGE_KEY);
+      localStorage.removeItem(AUTOSAVE_TIMESTAMP_KEY);
+      saveSchema(null).catch(() => {});
+    } catch (e) {
+      console.warn('Draft cleanup warning:', e);
+    }
     setStep('idle');
-    setCurrentFileName('');
-    setFilePreviewUrl(null);
     setParsedSchema(null);
     setCreatedForm(null);
     setErrorMessage(null);
+    setFilePreviewUrl(null);
+    setCurrentFileName('');
+    setRestoredDraftInfo(null);
   };
 
-  // Process Document / Image / Brief with Gemini 2.5 Flash
+  const handleDismissRestoredBanner = () => {
+    setRestoredDraftInfo(null);
+  };
+
+  const handleClearSavedDraft = () => {
+    handleReset();
+  };
+
+  const [lastParsePayload, setLastParsePayload] = useState<any>(null);
+
+  // Document parsing helper sending payloads to backend Gemini endpoint
   const parseDocumentWithAI = async (payload: {
     fileBase64?: string;
     mimeType?: string;
@@ -153,9 +202,13 @@ export default function App() {
     includeDefaultProfile?: boolean;
     includeNotes?: boolean;
     extractionMode?: 'STRICT_VERBATIM' | 'SMART_ENHANCE';
+    extractedAssets?: Asset[];
   }) => {
+    setLastParsePayload(payload);
     setStep('parsing');
     setErrorMessage(null);
+    setRestoredDraftInfo(null);
+
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -164,29 +217,68 @@ export default function App() {
         headers['x-gemini-api-key'] = customApiKey.trim();
       }
 
-      const response = await fetch('/api/parse-document', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          ...payload,
-          includeDefaultProfile: payload.includeDefaultProfile !== undefined ? payload.includeDefaultProfile : true,
-          includeNotes: payload.includeNotes !== undefined ? payload.includeNotes : false,
-          extractionMode: payload.extractionMode || 'STRICT_VERBATIM',
-          userApiKey: customApiKey.trim() || undefined,
-        }),
-      });
+      // Optimize payload: If digital text was already extracted, avoid sending redundant multi-MB raw base64 document
+      const payloadToSend: any = { ...payload };
+      if (
+        payloadToSend.textContent &&
+        payloadToSend.textContent.trim().length > 30 &&
+        (payloadToSend.mimeType === 'application/pdf' ||
+          payloadToSend.fileName?.toLowerCase().endsWith('.pdf') ||
+          payloadToSend.fileName?.toLowerCase().endsWith('.docx'))
+      ) {
+        delete payloadToSend.fileBase64;
+      }
 
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to analyze document structure.');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 180000); // 180s timeout
+
+      let response: Response;
+      try {
+        response = await fetch('/api/parse-document', {
+          method: 'POST',
+          headers,
+          signal: controller.signal,
+          body: JSON.stringify({
+            ...payloadToSend,
+            userApiKey: customApiKey.trim() || undefined,
+          }),
+        });
+      } catch (fetchErr: any) {
+        if (fetchErr.name === 'AbortError') {
+          throw new Error('Document processing timed out after 3 minutes. Please click "Retry Processing" or enter a Gemini API key in Settings.');
+        }
+        throw new Error(
+          'Network connection interrupted while connecting to the document parsing service. Please check your internet connection or verify your API key in Settings.'
+        );
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      let data: any = null;
+      try {
+        const text = await response.text();
+        data = text ? JSON.parse(text) : null;
+      } catch (jsonErr) {
+        console.warn('Response was not valid JSON:', jsonErr);
+      }
+
+      if (!response.ok || !data?.success) {
+        const errMessage =
+          data?.error ||
+          (response.status === 413
+            ? 'The uploaded file is too large for web transfer. Please use a smaller file or copy-paste text.'
+            : response.status === 429
+            ? 'Rate limit reached or server busy. Please retry in a few moments or provide a custom Gemini API key.'
+            : `Server processing notice (${response.status}). Please try again.`);
+        throw new Error(errMessage);
       }
 
       setParsedSchema(data.data);
       setStep('preview');
-    } catch (err: any) {
-      console.error('Parsing error:', err);
+    } catch (error: any) {
+      console.error('Parse error:', error);
       setErrorMessage(
-        err.message || 'An error occurred while parsing the document with Gemini AI.'
+        error.message || 'An error occurred while processing the document. Please try again.'
       );
       setStep('error');
     }
@@ -195,16 +287,17 @@ export default function App() {
   const handleFileSelected = (
     file: File,
     base64: string,
-    preview: string | null,
+    previewUrl: string | null,
     options?: {
       includeDefaultProfile?: boolean;
       includeNotes?: boolean;
       extractionMode?: 'STRICT_VERBATIM' | 'SMART_ENHANCE';
       extractedDocText?: string;
+      extractedAssets?: Asset[];
     }
   ) => {
     setCurrentFileName(file.name);
-    setFilePreviewUrl(preview);
+    setFilePreviewUrl(previewUrl);
     parseDocumentWithAI({
       fileBase64: base64,
       mimeType: file.type || 'application/octet-stream',
@@ -213,6 +306,7 @@ export default function App() {
       includeDefaultProfile: options?.includeDefaultProfile,
       includeNotes: options?.includeNotes,
       extractionMode: options?.extractionMode,
+      extractedAssets: options?.extractedAssets || [],
     });
   };
 
@@ -240,7 +334,6 @@ export default function App() {
     setCurrentFileName(template.name);
     setFilePreviewUrl(null);
     if (template.prebuiltSchema) {
-      // Instant load without AI delay or guessing
       setParsedSchema(template.prebuiltSchema);
       setStep('preview');
     } else {
@@ -263,11 +356,31 @@ export default function App() {
     });
   };
 
+  const handleAutoLoadDoc = (payload: {
+    fileName: string;
+    textContent?: string;
+    fileBase64?: string;
+    mimeType?: string;
+    extractedAssets?: Asset[];
+    extractionMode?: 'STRICT_VERBATIM' | 'SMART_ENHANCE';
+  }) => {
+    setIsStressTestOpen(false);
+    setCurrentFileName(payload.fileName);
+    setFilePreviewUrl(payload.fileBase64 && payload.mimeType?.startsWith('image/') ? payload.fileBase64 : null);
+    parseDocumentWithAI({
+      fileName: payload.fileName,
+      textContent: payload.textContent,
+      fileBase64: payload.fileBase64,
+      mimeType: payload.mimeType || 'text/plain',
+      extractedAssets: payload.extractedAssets || [],
+      extractionMode: payload.extractionMode || 'STRICT_VERBATIM',
+    });
+  };
+
   // Generate Google Form
   const handleGenerateForm = async () => {
     if (!parsedSchema) return;
 
-    // Check if token exists; if not, prompt sign-in first
     let token = await getAccessToken();
     if (!token) {
       setIsLoggingIn(true);
@@ -277,13 +390,16 @@ export default function App() {
           setUser(authResult.user);
           token = authResult.accessToken;
         } else {
-          throw new Error('Google Sign-In is required to generate forms in your account.');
+          setErrorMessage('Please sign in to Google to create your form.');
+          setIsLoggingIn(false);
+          return;
         }
-      } catch (err: any) {
-        setIsLoggingIn(false);
+      } catch (authErr: any) {
+        console.error('Auth error during creation:', authErr);
         setErrorMessage(
-          err.message || 'Please sign in to Google to create forms in your Google Drive.'
+          authErr.message || 'Google authentication required to create Google Forms.'
         );
+        setIsLoggingIn(false);
         return;
       } finally {
         setIsLoggingIn(false);
@@ -297,8 +413,8 @@ export default function App() {
       const response = await fetch('/api/forms/create', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           formSchema: parsedSchema,
@@ -307,82 +423,116 @@ export default function App() {
       });
 
       const data = await response.json();
+
       if (!response.ok || !data.success) {
-        // If token expired or permission missing
-        if (response.status === 401 || response.status === 403) {
-          throw new Error(
-            'Google OAuth session expired or missing Forms permissions. Please sign in again.'
-          );
-        }
         throw new Error(data.error || 'Failed to create Google Form.');
       }
 
       setCreatedForm(data.data);
       setStep('success');
-    } catch (err: any) {
-      console.error('Form generation error:', err);
+    } catch (error: any) {
+      console.error('Creation error:', error);
       setErrorMessage(
-        err.message || 'Failed to generate Google Form. Please verify your connection.'
+        error.message || 'Failed to create form in Google Forms. Please try again.'
       );
-      setStep('preview'); // Return to preview so user does not lose edited schema
+      setStep('preview');
     }
   };
 
-  const hasActiveWorkflow = step !== 'idle';
+  const handleSchemaUpdated = (updatedSchema: ParsedFormSchema) => {
+    setParsedSchema(updatedSchema);
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50/80 flex flex-col font-sans text-slate-900 antialiased selection:bg-slate-900 selection:text-white">
-      {/* Top Navigation */}
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans antialiased selection:bg-emerald-100 selection:text-emerald-900">
+      {/* Header Navigation */}
       <Navbar
         user={user}
         onLogin={handleLogin}
         onLogout={handleLogout}
         onReset={handleReset}
-        hasActiveWorkflow={hasActiveWorkflow}
+        hasActiveWorkflow={step !== 'idle'}
         isLoggingIn={isLoggingIn}
         onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
         apiKeyConfigured={Boolean(customApiKey.trim())}
+        onToggleStressTest={() => setIsStressTestOpen((prev) => !prev)}
+        isStressTestOpen={isStressTestOpen}
       />
 
       {/* Main Container */}
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
-        {/* Error Banner */}
-        {errorMessage && (
-          <div className="max-w-3xl mx-auto mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3 shadow-2xs">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
+        {/* Isolated Development-Only Stress Test Environment Panel */}
+        {isStressTestOpen && (
+          <div className="mb-6">
+            <StressTestPanel
+              customApiKey={customApiKey}
+              userAccessToken={userAccessToken}
+              onClose={() => setIsStressTestOpen(false)}
+              onAutoLoadDoc={handleAutoLoadDoc}
+            />
+          </div>
+        )}
+        {/* Restored Draft Banner */}
+        {restoredDraftInfo && step === 'preview' && (
+          <div className="mb-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-emerald-900 shadow-2xs">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-100/80 text-emerald-800 rounded-xl">
+                <Save className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm font-bold">{restoredDraftInfo}</p>
+                <p className="text-[11px] text-emerald-700/80">
+                  Your edits are automatically preserved locally so you never lose work.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-end sm:self-center">
+              <button
+                type="button"
+                onClick={handleDismissRestoredBanner}
+                className="px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-800 text-xs font-semibold hover:bg-emerald-200 transition-colors cursor-pointer"
+              >
+                Keep Editing
+              </button>
+              <button
+                type="button"
+                onClick={handleClearSavedDraft}
+                className="px-3 py-1.5 rounded-lg bg-white border border-emerald-200 text-emerald-700 text-xs font-semibold hover:bg-emerald-50 transition-colors flex items-center gap-1 cursor-pointer"
+                title="Discard this draft and start fresh"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Discard Draft</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Global Error Alert Banner */}
+        {errorMessage && step !== 'error' && (
+          <div className="mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm flex items-start gap-3 shadow-2xs">
             <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-            <div className="flex-1 text-xs sm:text-sm text-rose-800">
-              <p className="font-bold mb-0.5">Notice</p>
-              <p>{errorMessage}</p>
+            <div className="flex-1">
+              <p className="font-bold">Notice</p>
+              <p className="mt-0.5 text-rose-700">{errorMessage}</p>
             </div>
             <button
               onClick={() => setErrorMessage(null)}
-              className="text-rose-500 hover:text-rose-800 text-xs font-semibold px-2 py-1 cursor-pointer"
+              className="text-rose-500 hover:text-rose-700 font-bold text-base px-1 cursor-pointer"
             >
-              Dismiss
+              &times;
             </button>
           </div>
         )}
 
-        {/* Dynamic Workflow Views */}
+        {/* Step: Idle / Document Ingestion */}
         {step === 'idle' && (
-          <div className="space-y-8">
-            {/* Header Hero Section */}
-            <div className="text-center max-w-2xl mx-auto space-y-2.5">
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">
-                Turn any document into a live Google Form
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-lg mx-auto">
-                Upload a document, describe your requirements, or select a pre-configured Smart Template.
-              </p>
-            </div>
-
-            {/* Ingestion Dropzone & Smart Templates */}
+          <div className="space-y-8 animate-in fade-in duration-300">
             <Dropzone
               onFileSelected={handleFileSelected}
               onTextSubmitted={handleTextSubmitted}
               onBriefSubmitted={handleBriefSubmitted}
               onTemplateSelected={handleTemplateSelected}
-              isProcessing={step === 'parsing'}
+              isProcessing={false}
               onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
               apiKeyConfigured={Boolean(customApiKey.trim())}
               hasEnvKey={hasEnvKey}
@@ -390,14 +540,16 @@ export default function App() {
           </div>
         )}
 
+        {/* Step: Parsing / Gemini Conversion Progress */}
         {step === 'parsing' && (
           <ParsingProgress fileName={currentFileName} onCancel={handleReset} />
         )}
 
+        {/* Step: Interactive Schema Review & Editing */}
         {step === 'preview' && parsedSchema && (
           <SchemaEditor
             schema={parsedSchema}
-            onChange={setParsedSchema}
+            onChange={handleSchemaUpdated}
             onGenerateForm={handleGenerateForm}
             onReset={handleReset}
             user={user}
@@ -407,40 +559,77 @@ export default function App() {
           />
         )}
 
-        {step === 'generating' && parsedSchema && (
-          <SchemaEditor
-            schema={parsedSchema}
-            onChange={setParsedSchema}
-            onGenerateForm={handleGenerateForm}
+        {/* Step: Generating Form & Sheets */}
+        {step === 'generating' && (
+          <div className="max-w-lg mx-auto py-16 text-center space-y-6">
+            <div className="relative w-20 h-20 mx-auto">
+              <div className="absolute inset-0 rounded-3xl bg-emerald-100 animate-ping opacity-25" />
+              <div className="relative w-20 h-20 rounded-3xl bg-slate-900 text-white flex items-center justify-center shadow-lg">
+                <Sparkles className="w-10 h-10 text-emerald-400 animate-spin" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-extrabold text-slate-900">
+                Publishing to Google Forms &amp; Connected Sheet...
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 max-w-sm mx-auto">
+                Setting up question types, uploading images to Drive, and linking a live Google Spreadsheet for real-time response capture.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Step: Success & Response Dashboard */}
+        {step === 'success' && createdForm && (
+          <SuccessView
+            formData={createdForm}
             onReset={handleReset}
-            user={user}
-            onLogin={handleLogin}
-            isGenerating={true}
-            isLoggingIn={isLoggingIn}
           />
         )}
 
-        {step === 'success' && createdForm && (
-          <SuccessView formData={createdForm} onReset={handleReset} />
-        )}
-
+        {/* Step: Error State */}
         {step === 'error' && (
-          <div className="max-w-md mx-auto py-12 text-center space-y-4">
+          <div className="max-w-md mx-auto py-12 text-center space-y-5">
             <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center mx-auto shadow-2xs">
               <AlertCircle className="w-7 h-7" />
             </div>
-            <h3 className="text-lg font-bold text-slate-900">Processing Interrupted</h3>
-            <p className="text-xs sm:text-sm text-slate-500">
-              {errorMessage || 'Unable to extract form structure from this document.'}
-            </p>
-            <button
-              id="btn-error-reset"
-              onClick={handleReset}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
-            >
-              <RotateCcw className="w-4 h-4 text-emerald-400" />
-              <span>Try Another Document</span>
-            </button>
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-bold text-slate-900">Processing Interrupted</h3>
+              <p className="text-xs sm:text-sm text-slate-500 max-w-sm mx-auto leading-relaxed">
+                {errorMessage || 'Unable to extract form structure from this document.'}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              {lastParsePayload && (
+                <button
+                  id="btn-error-retry"
+                  onClick={() => parseDocumentWithAI(lastParsePayload)}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-semibold hover:bg-emerald-700 transition-colors shadow-xs cursor-pointer"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Retry Processing</span>
+                </button>
+              )}
+
+              <button
+                id="btn-error-apikey"
+                onClick={() => setIsApiKeyModalOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
+              >
+                <Key className="w-4 h-4 text-indigo-600" />
+                <span>API Settings</span>
+              </button>
+
+              <button
+                id="btn-error-reset"
+                onClick={handleReset}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4 text-emerald-400" />
+                <span>Try Another Document</span>
+              </button>
+            </div>
           </div>
         )}
       </main>

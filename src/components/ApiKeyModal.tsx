@@ -119,7 +119,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                 <h2 className="text-base font-bold text-slate-900">Gemini API Key &amp; Integration Setup</h2>
                 <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
                   <Sparkles className="w-3 h-3" />
-                  2.5 Flash
+                  Gemini 3.7 Flash
                 </span>
               </div>
               <p className="text-xs text-slate-500">Configure your Google Gemini API key for document parsing</p>

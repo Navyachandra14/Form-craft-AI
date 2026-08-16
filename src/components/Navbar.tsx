@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FileSpreadsheet, RotateCcw, LogOut, CheckCircle2, User as UserIcon, HelpCircle, Sparkles, Key } from 'lucide-react';
+import { FileSpreadsheet, RotateCcw, LogOut, CheckCircle2, User as UserIcon, HelpCircle, Sparkles, Key, FlaskConical } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { GuideModal } from './GuideModal';
 
@@ -12,6 +12,8 @@ interface NavbarProps {
   isLoggingIn: boolean;
   onOpenApiKeyModal: () => void;
   apiKeyConfigured: boolean;
+  onToggleStressTest?: () => void;
+  isStressTestOpen?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -23,6 +25,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   isLoggingIn,
   onOpenApiKeyModal,
   apiKeyConfigured,
+  onToggleStressTest,
+  isStressTestOpen,
 }) => {
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
@@ -53,6 +57,25 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Actions */}
           <div className="flex items-center gap-2 sm:gap-2.5">
+            {/* Stress Test V2 Toggle Button */}
+            {onToggleStressTest && (
+              <button
+                id="btn-nav-stress-test"
+                type="button"
+                onClick={onToggleStressTest}
+                className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 sm:py-2 text-xs font-bold transition-all shadow-2xs cursor-pointer ${
+                  isStressTestOpen
+                    ? 'border-indigo-400 bg-indigo-600 text-white shadow-sm'
+                    : 'border-indigo-200 bg-indigo-50/70 text-indigo-800 hover:bg-indigo-100'
+                }`}
+                title="Open Isolated V2 Stress Testing & Capability Matrix"
+              >
+                <FlaskConical className={`h-3.5 w-3.5 ${isStressTestOpen ? 'text-white' : 'text-indigo-600'}`} />
+                <span className="hidden sm:inline">Stress Test V2</span>
+                <span className="sm:hidden">Tests</span>
+              </button>
+            )}
+
             {/* API Key Modal Button */}
             <button
               id="btn-nav-api-key"

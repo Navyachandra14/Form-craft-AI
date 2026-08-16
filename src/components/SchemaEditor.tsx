@@ -42,9 +42,16 @@ import {
   UploadCloud,
   X,
   Save,
+  Scan,
+  Maximize2,
+  ZoomIn,
+  CheckCheck,
+  BadgeCheck,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { FormPreviewModal } from './FormPreviewModal';
+import { MediaVerificationPanel } from './MediaVerificationPanel';
+import { MediaDiagnosticOverview } from './MediaDiagnosticOverview';
 
 export const AUTOSAVE_STORAGE_KEY = 'formcraft_autosaved_schema';
 export const AUTOSAVE_TIMESTAMP_KEY = 'formcraft_autosaved_timestamp';
@@ -86,6 +93,23 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
     schema.questions[0]?.id || null
   );
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isDiagnosticOverviewOpen, setIsDiagnosticOverviewOpen] = useState(true);
+  const [verifiedQuestions, setVerifiedQuestions] = useState<Record<string, boolean>>({});
+  const [expandedMediaPanels, setExpandedMediaPanels] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    schema.questions.forEach((q) => {
+      if (q.imageUrl || (q.assetIds && q.assetIds.length > 0)) {
+        initial[q.id] = true;
+      }
+    });
+    return initial;
+  });
+  const [lightboxImage, setLightboxImage] = useState<{
+    url: string;
+    title: string;
+    metadata?: string;
+  } | null>(null);
+
   const [lastAutosaved, setLastAutosaved] = useState<string | null>(() => {
     try {
       return localStorage.getItem(AUTOSAVE_TIMESTAMP_KEY);
@@ -94,19 +118,40 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
     }
   });
 
-  // Autosave to localStorage on every manual edit, validation toggle, or schema modification
-  useEffect(() => {
-    try {
-      if (schema && schema.questions && schema.questions.length > 0) {
-        localStorage.setItem(AUTOSAVE_STORAGE_KEY, JSON.stringify(schema));
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        localStorage.setItem(AUTOSAVE_TIMESTAMP_KEY, timeStr);
-        setLastAutosaved(timeStr);
+  const toggleQuestionVerification = (questionId: string) => {
+    setVerifiedQuestions((prev) => ({
+      ...prev,
+      [questionId]: !prev[questionId],
+    }));
+  };
+
+  const toggleMediaPanelExpanded = (questionId: string) => {
+    setExpandedMediaPanels((prev) => ({
+      ...prev,
+      [questionId]: !prev[questionId],
+    }));
+  };
+
+  const verifyAllMedia = () => {
+    const allVerified: Record<string, boolean> = {};
+    schema.questions.forEach((q) => {
+      if (q.imageUrl || (q.assetIds && q.assetIds.length > 0)) {
+        allVerified[q.id] = true;
       }
-    } catch (e) {
-      console.warn('Failed to autosave schema to localStorage:', e);
-    }
+    });
+    setVerifiedQuestions(allVerified);
+  };
+
+  const documentAssets = schema.assets || [];
+  const questionsWithMedia = schema.questions.filter(
+    (q) => Boolean(q.imageUrl || (q.assetIds && q.assetIds.length > 0))
+  );
+  const totalMediaCount = questionsWithMedia.length;
+  const verifiedMediaCount = questionsWithMedia.filter((q) => verifiedQuestions[q.id]).length;
+
+  // Autosave to IndexedDB via parent component is now managed by App.tsx
+  useEffect(() => {
+    // No-op for now, as App.tsx manages persistence
   }, [schema]);
 
   // Check if schema already contains respondent fields
@@ -284,6 +329,14 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
     setSelectedQuestionId(newQuestion.id);
   };
 
+  const isQuestionValid = (q: FormQuestion) => {
+    if (!q.title || q.title.trim() === '') return false;
+    if (['RADIO', 'CHECKBOX', 'DROP_DOWN'].includes(q.type)) {
+      if (!q.options || q.options.length === 0 || q.options.some(o => o.trim() === '')) return false;
+    }
+    return true;
+  };
+
   return (
     <div className="w-full max-w-4xl mx-auto space-y-6 pb-36 sm:pb-24">
       {/* Top Banner Status & Action Header */}
@@ -425,6 +478,21 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
         </div>
       </div>
 
+      {/* Image / Media Verification Diagnostic Overview Banner */}
+      {(documentAssets.length > 0 || totalMediaCount > 0) && (
+        <MediaDiagnosticOverview
+          schema={schema}
+          verifiedCount={verifiedMediaCount}
+          totalMediaQuestions={totalMediaCount}
+          onVerifyAll={verifyAllMedia}
+          onInspectImage={(url, title, metadata) =>
+            setLightboxImage({ url, title, metadata })
+          }
+          isDiagnosticOpen={isDiagnosticOverviewOpen}
+          onToggleDiagnostic={() => setIsDiagnosticOverviewOpen(!isDiagnosticOverviewOpen)}
+        />
+      )}
+
       {/* Questions List */}
       <div className="space-y-4">
         {/* Question List Header & Summary Ribbon */}
@@ -561,6 +629,17 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
                       {isSection ? 'Section Header' : 'Question Field'}
                     </span>
+                    
+                    {/* Visual Validation Status Icon */}
+                    {!isSection && (
+                      <span className="inline-flex items-center" title={isQuestionValid(q) ? 'Field configured' : 'Missing required metadata'}>
+                        {isQuestionValid(q) ? (
+                          <Check className="w-4 h-4 text-emerald-500" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 text-amber-500" />
+                        )}
+                      </span>
+                    )}
 
                     {/* Interactive Required / Optional Quick Badge */}
                     {!isSection && (
@@ -600,6 +679,40 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
                         <span>AI Rule: {q.validationRule.type}</span>
                         <Sparkles className="w-2.5 h-2.5 text-amber-500 ml-0.5" />
                       </span>
+                    )}
+
+                    {/* Image / Media Verification Toggle Badge & Diagnostic Button */}
+                    {!isSection && (
+                      <button
+                        id={`btn-media-verify-toggle-${index}`}
+                        type="button"
+                        onClick={() => toggleMediaPanelExpanded(q.id)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                          q.imageUrl
+                            ? verifiedQuestions[q.id]
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100'
+                              : 'bg-indigo-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100'
+                            : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'
+                        }`}
+                        title="Toggle Image / Media Verification diagnostic panel for this question"
+                      >
+                        <ImageIcon
+                          className={`w-3.5 h-3.5 ${
+                            q.imageUrl
+                              ? verifiedQuestions[q.id]
+                                ? 'text-emerald-700'
+                                : 'text-indigo-600'
+                              : 'text-slate-500'
+                          }`}
+                        />
+                        <span>
+                          {q.imageUrl
+                            ? verifiedQuestions[q.id]
+                              ? 'Media: Verified ✓'
+                              : 'Verify Media 🔍'
+                            : 'Attach Media'}
+                        </span>
+                      </button>
                     )}
                   </div>
 
@@ -689,115 +802,25 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
                   />
                 </div>
 
-                {/* Question Image & Visual Reference Inspector (For Screenshot Cases & Visual QA) */}
+                {/* Question Image / Media Verification Diagnostic Panel */}
                 {!isSection && (
-                  <div className="mb-4 p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200/90 space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <ImageIcon className="w-4 h-4 text-indigo-600" />
-                        <span className="text-xs font-bold text-slate-800">
-                          Case Visual Reference / Screenshot
-                        </span>
-                        {q.hasImagePrompt && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">
-                            Visual Case
-                          </span>
-                        )}
-                      </div>
-
-                      {q.imageUrl && (
-                        <button
-                          type="button"
-                          onClick={() => updateQuestion(q.id, { imageUrl: undefined })}
-                          className="text-xs font-semibold text-rose-600 hover:text-rose-800 inline-flex items-center gap-1 cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" /> Remove Image
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Image Preview if Present */}
-                    {q.imageUrl ? (
-                      <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-white shadow-2xs">
-                        <img
-                          src={q.imageUrl}
-                          alt={q.title}
-                          className="w-full max-h-56 object-contain bg-slate-100/50"
-                        />
-                        <div className="p-2.5 bg-white border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
-                          <span className="truncate max-w-[280px]">
-                            {q.imageDescription || 'Visual prompt attached to this evaluation case'}
-                          </span>
-                          <label className="text-indigo-600 font-semibold cursor-pointer hover:underline text-[11px] shrink-0">
-                            Change Image
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="sr-only"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  const reader = new FileReader();
-                                  reader.onload = (re) => {
-                                    updateQuestion(q.id, { imageUrl: (re.target?.result as string) || '' });
-                                  };
-                                  reader.readAsDataURL(file);
-                                }
-                              }}
-                            />
-                          </label>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
-                        <div className="sm:col-span-6 flex items-center gap-2">
-                          <label className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 cursor-pointer shadow-2xs transition-colors">
-                            <UploadCloud className="w-4 h-4 text-indigo-500" />
-                            <span>Upload Case Screenshot</span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="sr-only"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  const reader = new FileReader();
-                                  reader.onload = (re) => {
-                                    updateQuestion(q.id, {
-                                      imageUrl: (re.target?.result as string) || '',
-                                      hasImagePrompt: true,
-                                    });
-                                  };
-                                  reader.readAsDataURL(file);
-                                }
-                              }}
-                            />
-                          </label>
-                        </div>
-
-                        <div className="sm:col-span-6">
-                          <input
-                            type="url"
-                            value={q.imageUrl || ''}
-                            onChange={(e) => updateQuestion(q.id, { imageUrl: e.target.value, hasImagePrompt: Boolean(e.target.value) })}
-                            placeholder="Or paste image URL (https://...)"
-                            className="w-full text-xs px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-slate-800 text-slate-800"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Image / Scene Description Input */}
-                    <div>
-                      <input
-                        type="text"
-                        value={q.imageDescription || ''}
-                        onChange={(e) => updateQuestion(q.id, { imageDescription: e.target.value })}
-                        placeholder="Visual context summary (e.g. 'Case 1: Street address badge mockup')..."
-                        className="w-full text-[11px] px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-600 focus:outline-hidden focus:ring-1 focus:ring-slate-800"
-                      />
-                    </div>
-                  </div>
+                  <MediaVerificationPanel
+                    question={q}
+                    questionIndex={index}
+                    isVerified={Boolean(verifiedQuestions[q.id])}
+                    onToggleVerified={() => toggleQuestionVerification(q.id)}
+                    onUpdateQuestion={(updates) => updateQuestion(q.id, updates)}
+                    documentAssets={documentAssets}
+                    onInspectImage={(url, title, metadata) =>
+                      setLightboxImage({ url, title, metadata })
+                    }
+                    isExpanded={
+                      expandedMediaPanels[q.id] !== undefined
+                        ? expandedMediaPanels[q.id]
+                        : Boolean(q.imageUrl)
+                    }
+                    onToggleExpanded={() => toggleMediaPanelExpanded(q.id)}
+                  />
                 )}
 
                 {/* Choice Options (Radio, Checkbox, Dropdown) */}
@@ -877,136 +900,43 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
                   </div>
                 )}
 
-                {/* Validation & Input Constraints Panel */}
+                {/* Field Requirements Toggle */}
                 {!isSection && (
-                  <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
-                    <div className="bg-slate-50/90 border border-slate-200/90 rounded-2xl p-4 space-y-3.5">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="mt-4 pt-4 border-t border-slate-100">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200/80">
+                      <div>
                         <div className="flex items-center gap-2">
-                          <ShieldCheck className="w-4 h-4 text-purple-600" />
-                          <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                            Validation Rules &amp; Constraints
+                          <span className="text-xs sm:text-sm font-bold text-slate-900">
+                            Mandatory Field (Required *)
                           </span>
-                        </div>
-
-                        {q.validationRule?.type ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-md bg-blue-100/80 text-blue-900 border border-blue-200">
-                            <Sparkles className="w-3 h-3 text-blue-600" />
-                            AI-Applied Rule: {q.validationRule.type}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-slate-500 font-medium">
-                            Standard Input
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Required Question Switch Row */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-white rounded-xl border border-slate-200/80">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs sm:text-sm font-bold text-slate-900">
-                              Mandatory Question (Required *)
+                          {q.required ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-800">
+                              Required
                             </span>
-                            {q.required ? (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-800">
-                                Required Active
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                                Optional
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-slate-500 mt-0.5">
-                            Respondents cannot submit the form without answering this field.
-                          </p>
+                          ) : (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-200/80 text-slate-600">
+                              Optional
+                            </span>
+                          )}
                         </div>
-
-                        <label
-                          htmlFor={`required-toggle-switch-${q.id}`}
-                          className="relative inline-flex items-center cursor-pointer select-none shrink-0"
-                        >
-                          <input
-                            id={`required-toggle-switch-${q.id}`}
-                            type="checkbox"
-                            checked={q.required}
-                            onChange={(e) => updateQuestion(q.id, { required: e.target.checked })}
-                            className="sr-only peer"
-                          />
-                          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
-                        </label>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Respondents must provide an answer before submitting the form.
+                        </p>
                       </div>
 
-                      {/* Format Validation Rule Row */}
-                      <div className="p-3 bg-white rounded-xl border border-slate-200/80 space-y-2.5">
-                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
-                          <div className="sm:col-span-4">
-                            <label
-                              htmlFor={`validation-type-${q.id}`}
-                              className="block text-[11px] font-bold uppercase tracking-wider text-slate-600"
-                            >
-                              Validation Format
-                            </label>
-                            <span className="text-[11px] text-slate-400">Enforce response syntax</span>
-                          </div>
-
-                          <div className="sm:col-span-8">
-                            <select
-                              id={`validation-type-${q.id}`}
-                              value={q.validationRule?.type || 'NONE'}
-                              onChange={(e) =>
-                                updateValidationRule(
-                                  q.id,
-                                  e.target.value as 'EMAIL' | 'PHONE' | 'URL' | 'NUMBER' | 'CUSTOM' | 'NONE'
-                                )
-                              }
-                              className="w-full min-h-[40px] text-xs font-semibold px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-800 text-slate-800 cursor-pointer"
-                            >
-                              <option value="NONE">None (Standard Open Response)</option>
-                              <option value="EMAIL">✉️ Email Address Format (name@domain.com)</option>
-                              <option value="PHONE">📱 Phone Number Format</option>
-                              <option value="URL">🔗 Website / Portfolio URL (https://...)</option>
-                              <option value="NUMBER">🔢 Numeric Value Only</option>
-                              <option value="CUSTOM">🛡️ Custom Format Rule</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        {/* Custom Error Message input when rule is active */}
-                        {q.validationRule?.type && (
-                          <div className="pt-2 border-t border-slate-100">
-                            <label
-                              htmlFor={`validation-msg-${q.id}`}
-                              className="block text-[11px] font-bold text-slate-600 mb-1"
-                            >
-                              Custom Validation Error Message (Optional)
-                            </label>
-                            <input
-                              id={`validation-msg-${q.id}`}
-                              type="text"
-                              value={q.validationRule.message || ''}
-                              onChange={(e) =>
-                                updateValidationRule(
-                                  q.id,
-                                  q.validationRule?.type || 'CUSTOM',
-                                  e.target.value
-                                )
-                              }
-                              placeholder={
-                                q.validationRule.type === 'EMAIL'
-                                  ? 'e.g., Please enter a valid email address.'
-                                  : q.validationRule.type === 'URL'
-                                  ? 'e.g., Please enter a valid portfolio URL (https://...).'
-                                  : q.validationRule.type === 'NUMBER'
-                                  ? 'e.g., Please enter a valid number.'
-                                  : 'e.g., Invalid response format.'
-                              }
-                              className="w-full min-h-[38px] text-xs px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-800 text-slate-700"
-                            />
-                          </div>
-                        )}
-                      </div>
+                      <label
+                        htmlFor={`required-toggle-switch-${q.id}`}
+                        className="relative inline-flex items-center cursor-pointer select-none shrink-0"
+                      >
+                        <input
+                          id={`required-toggle-switch-${q.id}`}
+                          type="checkbox"
+                          checked={q.required}
+                          onChange={(e) => updateQuestion(q.id, { required: e.target.checked })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                      </label>
                     </div>
                   </div>
                 )}
@@ -1216,6 +1146,72 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
         onConfirmGenerate={user ? onGenerateForm : onLogin}
         userLoggedIn={Boolean(user)}
       />
+
+      {/* Media Inspection Lightbox Modal */}
+      {lightboxImage && (
+        <div
+          id="media-lightbox-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div
+            className="relative max-w-4xl w-full bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-700/20"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 bg-slate-50/70">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                  <ImageIcon className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm sm:text-base font-bold text-slate-900 truncate max-w-md">
+                    {lightboxImage.title || 'Extracted Image Asset'}
+                  </h4>
+                  {lightboxImage.metadata && (
+                    <p className="text-xs text-slate-500 font-mono">
+                      {lightboxImage.metadata}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setLightboxImage(null)}
+                className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Image Viewport */}
+            <div className="p-4 sm:p-6 bg-slate-950/5 flex items-center justify-center min-h-[300px] max-h-[70vh] overflow-auto">
+              <img
+                src={lightboxImage.url}
+                alt={lightboxImage.title}
+                className="max-w-full max-h-[65vh] object-contain rounded-xl shadow-md bg-white p-1"
+              />
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs font-semibold text-emerald-700 flex items-center gap-1.5">
+                <BadgeCheck className="w-4 h-4" />
+                <span>Extracted Media Verification Mode</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setLightboxImage(null)}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Done Inspecting
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -214,14 +214,7 @@ export const FormPreviewModal: React.FC<FormPreviewModalProps> = ({
           ? `
             <div style="margin-top: 8px; margin-bottom: 16px; border-radius: 12px; overflow: hidden; border: 1px solid #dadce0; background: #f8f9fa;">
               <img src="${escapeHtml(q.imageUrl)}" alt="${escapeHtml(q.title)}" style="width: 100%; max-height: 380px; object-fit: contain; display: block;" />
-              ${q.imageDescription ? `<div style="padding: 8px 12px; font-size: 11px; color: #5f6368; background: #fff; border-top: 1px solid #eee;"><strong>Visual Reference:</strong> ${escapeHtml(q.imageDescription)}</div>` : ''}
-            </div>
-          `
-          : q.imageDescription
-          ? `
-            <div style="margin-top: 8px; margin-bottom: 16px; padding: 10px 14px; border-radius: 10px; background: #f0f4f9; border: 1px solid #d3e3fd; font-size: 12px; color: #041e49; display: flex; align-items: center; gap: 8px;">
-              <span style="font-weight: 700; color: #1a73e8;">📷 Case Visual Reference:</span>
-              <span>${escapeHtml(q.imageDescription)}</span>
+              ${q.imageDescription ? `<div style="padding: 8px 12px; font-size: 11px; color: #5f6368; background: #fff; border-top: 1px solid #eee;"><strong>Note:</strong> ${escapeHtml(q.imageDescription)}</div>` : ''}
             </div>
           `
           : '';

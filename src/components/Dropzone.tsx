@@ -23,7 +23,8 @@ import {
   Search,
 } from 'lucide-react';
 import { SMART_TEMPLATES, SmartTemplate } from './SampleDocs';
-import { BriefConfig, ParsedFormSchema, ProjectCategory } from '../types';
+import { BriefConfig, ParsedFormSchema, ProjectCategory, Asset } from '../types';
+import { extractPdfPagesAndImages } from '../lib/pdfExtractor';
 
 interface DropzoneProps {
   onFileSelected: (
@@ -35,6 +36,7 @@ interface DropzoneProps {
       includeNotes?: boolean;
       extractionMode?: 'STRICT_VERBATIM' | 'SMART_ENHANCE';
       extractedDocText?: string;
+      extractedAssets?: Asset[];
     }
   ) => void;
   onTextSubmitted: (
@@ -124,6 +126,28 @@ export const Dropzone: React.FC<DropzoneProps> = ({
         return;
       } catch (err) {
         console.warn('Docx fallback', err);
+      }
+    }
+
+    if (isPdf) {
+      try {
+        // Extract all PDF page visual screenshots and text content
+        const pdfResult = await extractPdfPagesAndImages(file);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const result = (e.target?.result as string) || '';
+          onFileSelected(file, result, pdfResult.assets[0]?.dataUrl || null, {
+            includeDefaultProfile,
+            includeNotes,
+            extractionMode,
+            extractedDocText: pdfResult.structuredText,
+            extractedAssets: pdfResult.assets,
+          });
+        };
+        reader.readAsDataURL(file);
+        return;
+      } catch (pdfErr) {
+        console.warn('PDF automatic extraction notice, using fallback:', pdfErr);
       }
     }
 
