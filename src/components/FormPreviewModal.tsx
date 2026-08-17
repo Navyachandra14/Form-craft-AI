@@ -52,12 +52,20 @@ export const FormPreviewModal: React.FC<FormPreviewModalProps> = ({
         if (q.type === 'SECTION_HEADER') {
           return `
             <div class="card section-card" id="q-${escapeHtml(q.id)}">
+              <div class="section-card-header">
+                <span class="section-tag">✦ SECTION BREAK</span>
+              </div>
               <div class="section-title">${escapeHtml(q.title || 'Untitled Section')}</div>
               ${
                 q.description
                   ? `<div class="section-desc">${escapeHtml(q.description)}</div>`
                   : ''
               }
+            </div>
+            <div class="section-divider-hint">
+              <div class="divider-line"></div>
+              <span>Questions in this section</span>
+              <div class="divider-line"></div>
             </div>
           `;
         }
@@ -202,6 +210,59 @@ export const FormPreviewModal: React.FC<FormPreviewModalProps> = ({
             `;
             break;
 
+          case 'FILE_UPLOAD': {
+            const acceptedTypes = q.acceptedFileTypes && q.acceptedFileTypes.length > 0
+              ? q.acceptedFileTypes
+              : ['PDF', 'DOCUMENT'];
+            const maxFiles = q.maxFiles || 1;
+            const maxSize = q.maxFileSizeMb || 10;
+            const validationMsg = q.validationRule?.message || '';
+
+            inputControlHtml = `
+              <div class="file-upload-preview-container">
+                <div class="file-upload-specs-bar">
+                  <div class="file-types-list">
+                    <span class="spec-label">Allowed formats:</span>
+                    ${acceptedTypes
+                      .map((t) => `<span class="spec-tag">${escapeHtml(t)}</span>`)
+                      .join('')}
+                  </div>
+                  <div class="spec-limits">
+                    <span>Max size: <strong>${maxSize} MB</strong></span>
+                    <span>•</span>
+                    <span>Max files: <strong>${maxFiles}</strong></span>
+                  </div>
+                </div>
+
+                <div class="file-upload-action-box">
+                  <label class="g-file-upload-btn" onclick="alert('File upload simulation: In live form, respondent selects local file(s).')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a73e8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                      <polyline points="17 8 12 3 7 8"></polyline>
+                      <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <span>Add file</span>
+                  </label>
+                  <span class="file-upload-drop-hint">or drag &amp; drop files here</span>
+                </div>
+
+                ${
+                  validationMsg
+                    ? `
+                  <div class="validation-rule-hint">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1a73e8" stroke-width="2">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    </svg>
+                    <span><strong>Rule:</strong> ${escapeHtml(validationMsg)}</span>
+                  </div>
+                `
+                    : ''
+                }
+              </div>
+            `;
+            break;
+          }
+
           default:
             inputControlHtml = `
               <div class="input-container">
@@ -305,8 +366,25 @@ export const FormPreviewModal: React.FC<FormPreviewModalProps> = ({
       background: #673ab7;
       color: #ffffff;
       border: none;
+      border-top: 6px solid #512da8;
       border-radius: 8px;
-      padding: 20px 24px;
+      padding: 22px 24px;
+      margin-top: 20px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    }
+    .section-card-header {
+      margin-bottom: 8px;
+    }
+    .section-tag {
+      background: rgba(255, 255, 255, 0.22);
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.8px;
+      display: inline-block;
     }
     .section-title {
       font-family: 'Google Sans', 'Roboto', sans-serif;
@@ -318,8 +396,25 @@ export const FormPreviewModal: React.FC<FormPreviewModalProps> = ({
     .section-desc {
       font-size: 13px;
       color: #e1d5f2;
-      margin-top: 6px;
+      margin-top: 8px;
       line-height: 1.5;
+    }
+    .section-divider-hint {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin: 16px 0 12px 0;
+      color: #70757a;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .divider-line {
+      flex: 1;
+      height: 1px;
+      background: #dadce0;
     }
     .question-card {
       /* Standard Google Forms card */
@@ -453,6 +548,96 @@ export const FormPreviewModal: React.FC<FormPreviewModalProps> = ({
       font-size: 13px;
       color: #5f6368;
       font-weight: 500;
+    }
+    .file-upload-preview-container {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .file-upload-specs-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: #5f6368;
+      background: #f8f9fa;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid #e8eaed;
+    }
+    .file-types-list {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 5px;
+    }
+    .spec-label {
+      font-weight: 500;
+      color: #3c4043;
+    }
+    .spec-tag {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: #e8f0fe;
+      color: #1967d2;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .spec-limits {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11.5px;
+    }
+    .file-upload-action-box {
+      border: 1px dashed #dadce0;
+      border-radius: 6px;
+      padding: 16px;
+      background: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .g-file-upload-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: #ffffff;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: #1a73e8;
+      cursor: pointer;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+      user-select: none;
+      transition: background-color 0.15s, border-color 0.15s;
+    }
+    .g-file-upload-btn:hover {
+      background: #f1f3f4;
+      border-color: #d2d4d7;
+    }
+    .file-upload-drop-hint {
+      font-size: 12px;
+      color: #70757a;
+    }
+    .validation-rule-hint {
+      font-size: 11px;
+      color: #1967d2;
+      background: #e8f0fe;
+      padding: 5px 9px;
+      border-radius: 4px;
+      border: 1px solid #d2e3fc;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      align-self: flex-start;
     }
     .footer-actions {
       display: flex;

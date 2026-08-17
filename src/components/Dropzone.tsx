@@ -21,6 +21,7 @@ import {
   Layers,
   Settings2,
   Search,
+  Clock,
 } from 'lucide-react';
 import { SMART_TEMPLATES, SmartTemplate } from './SampleDocs';
 import { BriefConfig, ParsedFormSchema, ProjectCategory, Asset } from '../types';
@@ -54,6 +55,7 @@ interface DropzoneProps {
   onOpenApiKeyModal?: () => void;
   apiKeyConfigured?: boolean;
   hasEnvKey?: boolean;
+  onOpenHistory?: () => void;
 }
 
 export const Dropzone: React.FC<DropzoneProps> = ({
@@ -65,6 +67,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
   onOpenApiKeyModal,
   apiKeyConfigured,
   hasEnvKey,
+  onOpenHistory,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [activeTab, setActiveTab] = useState<'upload' | 'templates' | 'prompt'>('upload');
@@ -242,7 +245,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
   return (
     <div className="w-full max-w-4xl mx-auto space-y-6">
       {/* Streamlined Mode Navigation */}
-      <div className="flex items-center justify-center">
+      <div className="flex flex-wrap items-center justify-center gap-2">
         <div className="inline-flex p-1.5 bg-slate-200/70 rounded-2xl border border-slate-300/80 shadow-2xs gap-1">
           <button
             id="tab-upload-doc"
@@ -289,6 +292,19 @@ export const Dropzone: React.FC<DropzoneProps> = ({
             <span>Describe Idea</span>
           </button>
         </div>
+
+        {onOpenHistory && (
+          <button
+            id="btn-dropzone-open-history"
+            type="button"
+            onClick={onOpenHistory}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-white border border-slate-200/90 hover:border-indigo-300 hover:bg-indigo-50/40 text-slate-700 hover:text-indigo-900 text-xs sm:text-sm font-bold rounded-2xl shadow-2xs transition-all cursor-pointer"
+            title="Browse previous forms & saved drafts"
+          >
+            <Clock className="w-4 h-4 text-indigo-600" />
+            <span>Recent Forms &amp; Drafts</span>
+          </button>
+        )}
       </div>
 
       {errorMessage && (
@@ -489,15 +505,63 @@ export const Dropzone: React.FC<DropzoneProps> = ({
             </div>
 
             <div>
-              <label htmlFor="prompt-idea-textarea" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Describe Your Form Idea, Questions, or Scope
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label htmlFor="prompt-idea-textarea" className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Describe Your Form Idea, Questions, or Scope
+                </label>
+                <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
+                  Select a preset or describe freely
+                </span>
+              </div>
+
+              {/* Quick Idea Presets */}
+              <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormTitle('Video Annotation & English Grammar Assessment');
+                    setPromptIdea(
+                      'Create a 15-question technical screening assessment for Video Annotation Specialists:\n- Section 1: Candidate Profile (Name, Email, WhatsApp Phone, Portfolio URL, CV upload)\n- Section 2: English Grammar & Syntax (10 MCQs testing subject-verb agreement, dangling modifiers, passive voice, and punctuation with 1 point each)\n- Section 3: Computer Vision & Annotation Logic (5 MCQs testing bounding box IoU overlap, occlusion tracking, and camera artifacts)\n- Scoring Rules: 80% Passing Threshold (12/15). Candidates scoring ≥80% receive WhatsApp onboarding link (https://chat.whatsapp.com/demo). Candidates under 70% receive polite feedback.'
+                    );
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-semibold transition-colors cursor-pointer border border-indigo-200/60"
+                >
+                  ⚡ Assessment Test (80% Pass + WhatsApp)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormTitle('Senior AI Engineer & Cloud Architect Application');
+                    setPromptIdea(
+                      'Create a comprehensive technical application form for AI Engineers & Cloud Architects:\n- Section 1: Candidate Verification (Full Name, Work Email, Phone Number, GitHub Profile URL, System Architecture Case Study link, Resume upload)\n- Section 2: Technical Competencies (Target role, Cloud platforms used, AI frameworks like PyTorch/LangChain/Vector DBs, Years of experience)\n- Section 3: Screening Criteria & Availability (Earliest start date, Expected compensation, NDA agreement)\n- Workflow: Score matching candidate skills against criteria. Auto-flag top tier candidates in connected Google Sheet.'
+                    );
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold transition-colors cursor-pointer border border-emerald-200/60"
+                >
+                  🎯 Skill-Matching Application
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormTitle('Multilingual Localization Specialist Screening');
+                    setPromptIdea(
+                      'Create an intake and language qualification form for Indic (Hindi, Tamil, Telugu, Kannada, Bengali, Marathi) and Global translators:\n- Section 1: Personal & Contact Details\n- Section 2: Native Language, Regional Dialect, CEFR English Level, CAT Tools proficiency\n- Section 3: Daily Translation Word Capacity and specialized domains\n- Section 4: ProZ / LinkedIn Profile URL and CV upload (PDF)\n- Connect responses to Google Sheets for automated tiering.'
+                    );
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-semibold transition-colors cursor-pointer border border-amber-200/60"
+                >
+                  🌐 Localization Intake Form
+                </button>
+              </div>
+
               <textarea
                 id="prompt-idea-textarea"
                 rows={6}
                 value={promptIdea}
                 onChange={(e) => setPromptIdea(e.target.value)}
-                placeholder={`Describe the form in natural language or paste raw questions...\n\nExample:\n"Create a vendor registration form collecting business name, tax ID, product categories (apparel, electronics, food), liability insurance confirmation checkbox, and delivery schedule preference."`}
+                placeholder={`Describe the form in natural language or paste raw questions...\n\nExample:\n"Create a 15-question technical screening assessment for Video Annotation Specialists with English grammar MCQs, bounding box questions, 80% passing threshold, and WhatsApp group invite link for passed candidates."`}
                 className="w-full px-3.5 py-2.5 text-sm bg-slate-50/70 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-800 focus:bg-white transition-all text-slate-800 leading-relaxed font-sans"
               />
             </div>

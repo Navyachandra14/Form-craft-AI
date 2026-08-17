@@ -37,6 +37,44 @@ export interface FormQuestion {
   };
 }
 
+export interface CandidateEmailTemplate {
+  enabled: boolean;
+  subject: string;
+  headline: string;
+  body: string;
+  actionButtonText?: string;
+  actionButtonUrl?: string; // Meeting link (Google Meet / Calendly / Zoom) or WhatsApp group / Telegram link
+  secondaryActionText?: string;
+  secondaryActionUrl?: string;
+  instructionsNote?: string;
+  additionalNotes?: string;
+}
+
+export interface WorkflowTriggerSettings {
+  enabled: boolean;
+  scoringMode: 'QUIZ_SCORE' | 'SKILL_MATCH' | 'GENERAL_SUBMISSION';
+  passThresholdPercent: number; // e.g. 80%
+  reviewThresholdPercent: number; // e.g. 70%
+  allowRetakes: boolean;
+  maxRetakes?: number;
+  retakeCooldownHours?: number; // e.g. 24
+  passedTemplate: CandidateEmailTemplate;
+  reviewTemplate: CandidateEmailTemplate;
+  failedTemplate: CandidateEmailTemplate;
+  notificationChannels: {
+    sendEmailToCandidate: boolean;
+    notifyAdminEmail?: string;
+    whatsappGroupUrl?: string;
+    telegramChannelUrl?: string;
+    googleMeetUrl?: string;
+    calendlyUrl?: string;
+  };
+  googleSheetsAutomation: {
+    autoColorCodeTiers: boolean;
+    generateAppsScript: boolean;
+  };
+}
+
 export interface ParsedFormSchema {
   title: string;
   description?: string;
@@ -44,6 +82,7 @@ export interface ParsedFormSchema {
   detectedDocumentType?: string;
   totalFieldsDetected?: number;
   assets?: Asset[];
+  workflowSettings?: WorkflowTriggerSettings;
 }
 
 export interface CreateFormResponse {

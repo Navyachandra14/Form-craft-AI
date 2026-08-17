@@ -402,7 +402,13 @@ DEFINITIVE IMAGE & ASSET RULES:
    - CONTACT FIELDS: Email questions must have validationRule.type = "EMAIL". Phone number questions must have validationRule.type = "PHONE".
    - NUMERIC FIELDS: Rates, years of experience, or numerical scores must have validationRule.type = "NUMBER".
 
-8. Output ONLY valid JSON matching the schema.`;
+8. STRICT SEPARATION OF SECTIONS AND QUESTIONS (NO MASHING):
+   - When a document contains distinct section headers, module headers, or page breaks (e.g. 'Section 1: Personal Details', 'Section 2: Technical Assessment', 'Section 3: File Uploads'):
+     * Output a standalone item with "type": "SECTION_HEADER", "title": "Section Title", and "description": "Optional section instructions".
+     * Follow it with separate, individual question items for each inquiry.
+     * NEVER mash, combine, or concatenate a Section Header and a Question into a single title or text field!
+
+9. Output ONLY valid JSON matching the schema.`;
 
     let userPrompt = '';
 

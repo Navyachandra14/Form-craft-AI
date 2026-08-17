@@ -282,7 +282,7 @@ export const StressTestPanel: React.FC<StressTestPanelProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'IMPLEMENTATION_PROGRESS.md';
+    a.download = 'TEST_AUDIT_REPORT.md';
     a.click();
     URL.revokeObjectURL(url);
   };

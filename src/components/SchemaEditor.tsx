@@ -40,6 +40,8 @@ import {
   Image as ImageIcon,
   ImagePlus,
   UploadCloud,
+  FileText,
+  Paperclip,
   X,
   Save,
   Scan,
@@ -52,6 +54,7 @@ import { User } from 'firebase/auth';
 import { FormPreviewModal } from './FormPreviewModal';
 import { MediaVerificationPanel } from './MediaVerificationPanel';
 import { MediaDiagnosticOverview } from './MediaDiagnosticOverview';
+import { ActionableWorkflowPanel } from './ActionableWorkflowPanel';
 
 export const AUTOSAVE_STORAGE_KEY = 'formcraft_autosaved_schema';
 export const AUTOSAVE_TIMESTAMP_KEY = 'formcraft_autosaved_timestamp';
@@ -76,6 +79,7 @@ const QUESTION_TYPES: { type: QuestionType; label: string; icon: React.FC<{ clas
   { type: 'SCALE', label: 'Linear Scale', icon: Star },
   { type: 'DATE', label: 'Date', icon: Calendar },
   { type: 'TIME', label: 'Time', icon: Clock },
+  { type: 'FILE_UPLOAD', label: 'File Upload (Docs / Media)', icon: UploadCloud },
   { type: 'SECTION_HEADER', label: 'Section Header / Divider', icon: Heading },
 ];
 
@@ -92,6 +96,7 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
   const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(
     schema.questions[0]?.id || null
   );
+  const [activeMainTab, setActiveMainTab] = useState<'schema' | 'workflow'>('schema');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isDiagnosticOverviewOpen, setIsDiagnosticOverviewOpen] = useState(true);
   const [verifiedQuestions, setVerifiedQuestions] = useState<Record<string, boolean>>({});
@@ -308,12 +313,13 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
   };
 
   const addNewQuestion = (type: QuestionType = 'SHORT_TEXT') => {
+    const isUpload = type === 'FILE_UPLOAD';
     const newQuestion: FormQuestion = {
       id: `q_${Date.now()}_${schema.questions.length}`,
-      title: `New ${type === 'SECTION_HEADER' ? 'Section' : 'Question'}`,
-      description: '',
+      title: type === 'SECTION_HEADER' ? 'New Section' : isUpload ? 'Upload Document or Image' : 'New Question',
+      description: isUpload ? 'Please upload your file (PDF or DOCX, max 10MB).' : '',
       type,
-      required: false,
+      required: isUpload ? true : false,
       options: ['RADIO', 'CHECKBOX', 'DROP_DOWN'].includes(type)
         ? ['Option 1', 'Option 2']
         : undefined,
@@ -321,6 +327,17 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
       scaleHigh: 5,
       scaleLowLabel: 'Poor',
       scaleHighLabel: 'Excellent',
+      acceptedFileTypes: isUpload ? ['PDF', 'DOCUMENT'] : undefined,
+      maxFiles: isUpload ? 1 : undefined,
+      maxFileSizeMb: isUpload ? 10 : undefined,
+      validationRule: isUpload
+        ? {
+            type: 'FILE_UPLOAD',
+            message: 'Please upload an accepted file format (PDF, DOCX, max 10MB).',
+            allowedFileTypes: ['PDF', 'DOCUMENT'],
+            maxFileSizeMb: 10,
+          }
+        : undefined,
     };
     onChange({
       ...schema,
@@ -332,7 +349,10 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
   const isQuestionValid = (q: FormQuestion) => {
     if (!q.title || q.title.trim() === '') return false;
     if (['RADIO', 'CHECKBOX', 'DROP_DOWN'].includes(q.type)) {
-      if (!q.options || q.options.length === 0 || q.options.some(o => o.trim() === '')) return false;
+      if (!q.options || q.options.length === 0 || q.options.some((o) => o.trim() === '')) return false;
+    }
+    if (q.type === 'FILE_UPLOAD') {
+      if (!q.acceptedFileTypes || q.acceptedFileTypes.length === 0) return true; // defaults to PDF/DOCUMENT
     }
     return true;
   };
@@ -367,7 +387,22 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+          <button
+            id="btn-toggle-workflow-tab"
+            type="button"
+            onClick={() => setActiveMainTab((prev) => (prev === 'schema' ? 'workflow' : 'schema'))}
+            className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold transition-all shadow-2xs cursor-pointer touch-manipulation ${
+              activeMainTab === 'workflow'
+                ? 'border-indigo-300 bg-indigo-50 text-indigo-900 ring-2 ring-indigo-500/20'
+                : 'border-slate-200 bg-slate-50/80 text-slate-700 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+            title="Configure automated scoring gates, email triggers, and WhatsApp links"
+          >
+            <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+            <span>{activeMainTab === 'workflow' ? 'View Questions' : '⚡ Actionable Workflow'}</span>
+          </button>
+
           <button
             id="btn-preview-form-header"
             type="button"
@@ -441,8 +476,46 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
         </div>
       </div>
 
-      {/* Form Metadata Card */}
-      <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/90 shadow-xs space-y-4">
+      {/* Main Tab Switcher Ribbon */}
+      <div className="flex rounded-2xl bg-slate-100 p-1.5 border border-slate-200/80 shadow-2xs">
+        <button
+          id="tab-schema-questions"
+          type="button"
+          onClick={() => setActiveMainTab('schema')}
+          className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            activeMainTab === 'schema'
+              ? 'bg-white text-slate-900 shadow-xs border border-slate-200/60'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Layers className="w-4 h-4 text-emerald-600" />
+          <span>Form Questions &amp; Fields ({schema.questions.length})</span>
+        </button>
+
+        <button
+          id="tab-actionable-workflow"
+          type="button"
+          onClick={() => setActiveMainTab('workflow')}
+          className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            activeMainTab === 'workflow'
+              ? 'bg-white text-indigo-900 shadow-xs border border-slate-200/60'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-indigo-600" />
+          <span>Actionable Workflow &amp; Triggers</span>
+          <span className="hidden md:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+            {schema.workflowSettings?.passThresholdPercent || 80}% Pass Gate • WhatsApp / Meet
+          </span>
+        </button>
+      </div>
+
+      {activeMainTab === 'workflow' ? (
+        <ActionableWorkflowPanel schema={schema} onChange={onChange} />
+      ) : (
+        <>
+          {/* Form Metadata Card */}
+          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/90 shadow-xs space-y-4">
         <div>
           <label
             htmlFor="schema-form-title-input"
@@ -540,6 +613,16 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
                 <span>Add Question</span>
               </button>
               <button
+                id="btn-add-upload"
+                type="button"
+                onClick={() => addNewQuestion('FILE_UPLOAD')}
+                className="min-h-[40px] inline-flex items-center justify-center gap-1.5 px-3 sm:px-3.5 py-2 bg-purple-50 hover:bg-purple-100 active:bg-purple-200 text-purple-900 border border-purple-200 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer shadow-2xs touch-manipulation"
+                title="Add a dedicated file upload question (Resume, Image, Document)"
+              >
+                <UploadCloud className="w-4 h-4 text-purple-700" />
+                <span>Add Upload Field</span>
+              </button>
+              <button
                 id="btn-add-section"
                 type="button"
                 onClick={() => addNewQuestion('SECTION_HEADER')}
@@ -611,14 +694,133 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
             const isChoiceType = ['RADIO', 'CHECKBOX', 'DROP_DOWN'].includes(q.type);
             const isScale = q.type === 'SCALE';
 
+            if (isSection) {
+              return (
+                <div key={q.id} className="relative my-6 first:mt-2">
+                  {/* Visual Section Divider Ribbon */}
+                  <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-5 sm:p-6 shadow-md border border-slate-800 relative overflow-hidden">
+                    {/* Decorative corner glow */}
+                    <div className="absolute top-0 right-0 w-64 h-32 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
+
+                    {/* Section Top Controls Bar */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-800">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <span className="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs font-extrabold tracking-wide uppercase flex items-center gap-1.5 shadow-2xs">
+                          <Heading className="w-3.5 h-3.5 text-indigo-400" />
+                          SECTION DIVIDER &amp; PAGE BREAK
+                        </span>
+                        <span className="text-xs text-slate-400 font-medium">
+                          Item #{index + 1}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          id={`btn-move-up-${index}`}
+                          type="button"
+                          disabled={index === 0}
+                          onClick={() => moveQuestion(index, 'up')}
+                          className="min-w-[40px] min-h-[40px] p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl disabled:opacity-25 flex items-center justify-center transition-colors cursor-pointer"
+                          title="Move section up"
+                        >
+                          <ChevronUp className="w-5 h-5" />
+                        </button>
+                        <button
+                          id={`btn-move-down-${index}`}
+                          type="button"
+                          disabled={index === schema.questions.length - 1}
+                          onClick={() => moveQuestion(index, 'down')}
+                          className="min-w-[40px] min-h-[40px] p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl disabled:opacity-25 flex items-center justify-center transition-colors cursor-pointer"
+                          title="Move section down"
+                        >
+                          <ChevronDown className="w-5 h-5" />
+                        </button>
+                        <button
+                          id={`btn-delete-${index}`}
+                          type="button"
+                          onClick={() => deleteQuestion(q.id)}
+                          className="min-w-[40px] min-h-[40px] p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 rounded-xl flex items-center justify-center transition-colors cursor-pointer"
+                          title="Delete section header"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Section Inputs */}
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                          Section Title (e.g., Section 1: Candidate Qualifications, Part B: Technical Skills)
+                        </label>
+                        <input
+                          id={`section-title-${index}`}
+                          type="text"
+                          value={q.title}
+                          onChange={(e) => updateQuestion(q.id, { title: e.target.value })}
+                          placeholder="Enter Section Title..."
+                          className="w-full text-base sm:text-lg font-bold px-4 py-3 bg-slate-800/90 border border-slate-700 text-white rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 placeholder:text-slate-500 shadow-inner"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-400 mb-1.5">
+                          Section Description / Instructions for respondents (optional)
+                        </label>
+                        <input
+                          id={`section-desc-${index}`}
+                          type="text"
+                          value={q.description || ''}
+                          onChange={(e) => updateQuestion(q.id, { description: e.target.value })}
+                          placeholder="Helper instructions or context for this section..."
+                          className="w-full text-xs sm:text-sm px-4 py-2.5 bg-slate-800/60 border border-slate-700/80 text-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-400 placeholder:text-slate-500"
+                        />
+                      </div>
+
+                      {/* Quick Action: Add Question Below this Section */}
+                      <div className="pt-2 flex items-center justify-between border-t border-slate-800/80 text-xs">
+                        <span className="text-slate-400">
+                          In Google Forms, this creates a distinct page / section break.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newQ: FormQuestion = {
+                              id: `q_${Date.now()}`,
+                              title: '',
+                              type: 'SHORT_TEXT',
+                              required: true,
+                            };
+                            const updatedQuestions = [...schema.questions];
+                            updatedQuestions.splice(index + 1, 0, newQ);
+                            onChange({ ...schema, questions: updatedQuestions });
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-xs transition-colors cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Question to this Section</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Visual Subdivider below Section */}
+                  <div className="flex items-center gap-3 my-4 px-2">
+                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-slate-300 to-slate-200" />
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                      <Layers className="w-3 h-3 text-slate-400" />
+                      Questions in this section
+                    </span>
+                    <div className="h-px flex-1 bg-gradient-to-l from-transparent via-slate-300 to-slate-200" />
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div
                 key={q.id}
-                className={`bg-white border rounded-3xl p-5 sm:p-6 shadow-xs transition-all ${
-                  isSection
-                    ? 'border-slate-300 bg-slate-50/50'
-                    : 'border-slate-200/90 hover:border-slate-300'
-                }`}
+                className="bg-white border rounded-3xl p-5 sm:p-6 shadow-xs transition-all border-slate-200/90 hover:border-slate-300"
               >
                 {/* Question Header & Order Controls & Visual Validation Indicators */}
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
@@ -627,49 +829,45 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
                       {index + 1}
                     </span>
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                      {isSection ? 'Section Header' : 'Question Field'}
+                      Question Field
                     </span>
                     
                     {/* Visual Validation Status Icon */}
-                    {!isSection && (
-                      <span className="inline-flex items-center" title={isQuestionValid(q) ? 'Field configured' : 'Missing required metadata'}>
-                        {isQuestionValid(q) ? (
-                          <Check className="w-4 h-4 text-emerald-500" />
-                        ) : (
-                          <AlertCircle className="w-4 h-4 text-amber-500" />
-                        )}
-                      </span>
-                    )}
+                    <span className="inline-flex items-center" title={isQuestionValid(q) ? 'Field configured' : 'Missing required metadata'}>
+                      {isQuestionValid(q) ? (
+                        <Check className="w-4 h-4 text-emerald-500" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-amber-500" />
+                      )}
+                    </span>
 
                     {/* Interactive Required / Optional Quick Badge */}
-                    {!isSection && (
-                      <button
-                        id={`btn-header-req-toggle-${index}`}
-                        type="button"
-                        onClick={() => updateQuestion(q.id, { required: !q.required })}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs ${
-                          q.required
-                            ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
-                            : 'bg-slate-100 text-slate-600 border border-slate-200/80 hover:bg-slate-200/70'
-                        }`}
-                        title={q.required ? 'Click to switch to Optional' : 'Click to switch to Required (*)'}
-                      >
-                        {q.required ? (
-                          <>
-                            <Asterisk className="w-3.5 h-3.5 text-rose-600 font-black" />
-                            <span>Required</span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                            <span>Optional</span>
-                          </>
-                        )}
-                      </button>
-                    )}
+                    <button
+                      id={`btn-header-req-toggle-${index}`}
+                      type="button"
+                      onClick={() => updateQuestion(q.id, { required: !q.required })}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                        q.required
+                          ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
+                          : 'bg-slate-100 text-slate-600 border border-slate-200/80 hover:bg-slate-200/70'
+                      }`}
+                      title={q.required ? 'Click to switch to Optional' : 'Click to switch to Required (*)'}
+                    >
+                      {q.required ? (
+                        <>
+                          <Asterisk className="w-3.5 h-3.5 text-rose-600 font-black" />
+                          <span>Required</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                          <span>Optional</span>
+                        </>
+                      )}
+                    </button>
 
                     {/* AI Validation Rule Indicator Badge */}
-                    {!isSection && q.validationRule?.type && (
+                    {q.validationRule?.type && (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200/80 shadow-2xs">
                         {q.validationRule.type === 'EMAIL' && <Mail className="w-3 h-3 text-blue-600" />}
                         {q.validationRule.type === 'PHONE' && <Phone className="w-3 h-3 text-emerald-600" />}
@@ -682,38 +880,36 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
                     )}
 
                     {/* Image / Media Verification Toggle Badge & Diagnostic Button */}
-                    {!isSection && (
-                      <button
-                        id={`btn-media-verify-toggle-${index}`}
-                        type="button"
-                        onClick={() => toggleMediaPanelExpanded(q.id)}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                    <button
+                      id={`btn-media-verify-toggle-${index}`}
+                      type="button"
+                      onClick={() => toggleMediaPanelExpanded(q.id)}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                        q.imageUrl
+                          ? verifiedQuestions[q.id]
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100'
+                            : 'bg-indigo-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100'
+                          : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'
+                      }`}
+                      title="Toggle Image / Media Verification diagnostic panel for this question"
+                    >
+                      <ImageIcon
+                        className={`w-3.5 h-3.5 ${
                           q.imageUrl
                             ? verifiedQuestions[q.id]
-                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100'
-                              : 'bg-indigo-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100'
-                            : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'
+                              ? 'text-emerald-700'
+                              : 'text-indigo-600'
+                            : 'text-slate-500'
                         }`}
-                        title="Toggle Image / Media Verification diagnostic panel for this question"
-                      >
-                        <ImageIcon
-                          className={`w-3.5 h-3.5 ${
-                            q.imageUrl
-                              ? verifiedQuestions[q.id]
-                                ? 'text-emerald-700'
-                                : 'text-indigo-600'
-                              : 'text-slate-500'
-                          }`}
-                        />
-                        <span>
-                          {q.imageUrl
-                            ? verifiedQuestions[q.id]
-                              ? 'Media: Verified ✓'
-                              : 'Verify Media 🔍'
-                            : 'Attach Media'}
-                        </span>
-                      </button>
-                    )}
+                      />
+                      <span>
+                        {q.imageUrl
+                          ? verifiedQuestions[q.id]
+                            ? 'Media: Verified ✓'
+                            : 'Verify Media 🔍'
+                          : 'Attach Media'}
+                      </span>
+                    </button>
                   </div>
 
                   <div className="flex items-center gap-1.5">
@@ -758,7 +954,7 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
                       type="text"
                       value={q.title}
                       onChange={(e) => updateQuestion(q.id, { title: e.target.value })}
-                      placeholder={isSection ? 'Section Title...' : 'Question Title...'}
+                      placeholder="Question Title..."
                       className="w-full min-h-[48px] text-sm sm:text-base font-semibold px-4 py-3 bg-slate-50/70 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-800 focus:bg-white text-slate-900 touch-manipulation"
                     />
                   </div>
@@ -776,6 +972,17 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
                           (!q.options || q.options.length === 0)
                         ) {
                           updates.options = ['Option 1', 'Option 2'];
+                        }
+                        if (newType === 'FILE_UPLOAD') {
+                          updates.acceptedFileTypes = q.acceptedFileTypes || ['PDF', 'DOCUMENT'];
+                          updates.maxFiles = q.maxFiles || 1;
+                          updates.maxFileSizeMb = q.maxFileSizeMb || 10;
+                          updates.validationRule = {
+                            type: 'FILE_UPLOAD',
+                            message: `Please upload your file (${(updates.acceptedFileTypes || ['PDF', 'DOCUMENT']).join(', ')}, max ${updates.maxFileSizeMb || 10}MB).`,
+                            allowedFileTypes: updates.acceptedFileTypes,
+                            maxFileSizeMb: updates.maxFileSizeMb,
+                          };
                         }
                         updateQuestion(q.id, updates);
                       }}
@@ -801,6 +1008,247 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
                     className="w-full min-h-[44px] text-xs sm:text-sm px-4 py-2.5 bg-slate-50/50 border border-slate-200/80 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-800 text-slate-600 touch-manipulation"
                   />
                 </div>
+
+                {/* FILE_UPLOAD Dedicated Configuration Panel */}
+                {q.type === 'FILE_UPLOAD' && (
+                  <div className="bg-purple-50/60 border border-purple-200/90 rounded-2xl p-4 sm:p-5 my-4 space-y-4 shadow-2xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-purple-700 text-white flex items-center justify-center shadow-2xs shrink-0">
+                          <UploadCloud className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs sm:text-sm font-bold text-purple-950">
+                            File Upload Configuration
+                          </h4>
+                          <p className="text-[11px] text-purple-700">
+                            Configure accepted file formats, size boundaries, and validation parameters.
+                          </p>
+                        </div>
+                      </div>
+                      <span className="self-start sm:self-auto text-[10px] font-bold px-2.5 py-1 rounded-full bg-purple-100 text-purple-900 border border-purple-200">
+                        📁 File Upload Field Active
+                      </span>
+                    </div>
+
+                    {/* Allowed File Types */}
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-purple-950 mb-2">
+                        Accepted File Types:
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { key: 'PDF', label: 'PDF (.pdf)' },
+                          { key: 'DOCUMENT', label: 'Documents (.docx, .doc, .txt)' },
+                          { key: 'IMAGE', label: 'Images (.png, .jpg, .webp)' },
+                          { key: 'SPREADSHEET', label: 'Spreadsheets (.xlsx, .csv)' },
+                          { key: 'PRESENTATION', label: 'Presentations (.pptx)' },
+                          { key: 'VIDEO', label: 'Video' },
+                          { key: 'AUDIO', label: 'Audio' },
+                        ].map((ft) => {
+                          const currentTypes = q.acceptedFileTypes || ['PDF', 'DOCUMENT'];
+                          const isSelected = currentTypes.includes(ft.key);
+                          return (
+                            <button
+                              key={ft.key}
+                              type="button"
+                              onClick={() => {
+                                let updated: string[];
+                                if (isSelected) {
+                                  updated = currentTypes.filter((t) => t !== ft.key);
+                                  if (updated.length === 0) updated = ['PDF'];
+                                } else {
+                                  updated = [...currentTypes, ft.key];
+                                }
+                                updateQuestion(q.id, {
+                                  acceptedFileTypes: updated,
+                                  validationRule: {
+                                    type: 'FILE_UPLOAD',
+                                    message: `Please upload an accepted file (${updated.join(', ')}, max ${q.maxFileSizeMb || 10}MB).`,
+                                    allowedFileTypes: updated,
+                                    maxFileSizeMb: q.maxFileSizeMb || 10,
+                                  },
+                                });
+                              }}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-purple-700 text-white shadow-2xs'
+                                  : 'bg-white text-purple-900 border border-purple-200 hover:bg-purple-100/80'
+                              }`}
+                            >
+                              {isSelected ? (
+                                <Check className="w-3.5 h-3.5 text-white" />
+                              ) : (
+                                <Plus className="w-3 h-3 text-purple-500" />
+                              )}
+                              <span>{ft.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Max Size & Max Files Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-purple-950 mb-1.5">
+                          Maximum File Size:
+                        </label>
+                        <select
+                          value={q.maxFileSizeMb || 10}
+                          onChange={(e) => {
+                            const size = Number(e.target.value);
+                            updateQuestion(q.id, {
+                              maxFileSizeMb: size,
+                              validationRule: {
+                                ...(q.validationRule || { type: 'FILE_UPLOAD' }),
+                                type: 'FILE_UPLOAD',
+                                maxFileSizeMb: size,
+                                allowedFileTypes: q.acceptedFileTypes || ['PDF', 'DOCUMENT'],
+                                message: q.validationRule?.message || `Please upload a file up to ${size}MB.`,
+                              },
+                            });
+                          }}
+                          className="w-full min-h-[44px] px-3.5 py-2 bg-white border border-purple-200 rounded-xl text-xs sm:text-sm text-purple-950 font-medium focus:outline-hidden focus:ring-2 focus:ring-purple-400 cursor-pointer"
+                        >
+                          <option value={1}>1 MB (Small Document)</option>
+                          <option value={5}>5 MB (Standard Document / Image)</option>
+                          <option value={10}>10 MB (Recommended for Resumes &amp; Portfolios)</option>
+                          <option value={25}>25 MB (Large Document / Presentation)</option>
+                          <option value={50}>50 MB (High-res Media)</option>
+                          <option value={100}>100 MB (Maximum Limit)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-purple-950 mb-1.5">
+                          Maximum Number of Files:
+                        </label>
+                        <select
+                          value={q.maxFiles || 1}
+                          onChange={(e) => {
+                            const count = Number(e.target.value);
+                            updateQuestion(q.id, { maxFiles: count });
+                          }}
+                          className="w-full min-h-[44px] px-3.5 py-2 bg-white border border-purple-200 rounded-xl text-xs sm:text-sm text-purple-950 font-medium focus:outline-hidden focus:ring-2 focus:ring-purple-400 cursor-pointer"
+                        >
+                          <option value={1}>1 File (Single Submission)</option>
+                          <option value={3}>Up to 3 Files</option>
+                          <option value={5}>Up to 5 Files</option>
+                          <option value={10}>Up to 10 Files</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Custom Validation Message */}
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-purple-950 mb-1.5">
+                        Validation Error Guidance:
+                      </label>
+                      <input
+                        type="text"
+                        value={q.validationRule?.message || ''}
+                        onChange={(e) => {
+                          updateQuestion(q.id, {
+                            validationRule: {
+                              type: 'FILE_UPLOAD',
+                              allowedFileTypes: q.acceptedFileTypes || ['PDF', 'DOCUMENT'],
+                              maxFileSizeMb: q.maxFileSizeMb || 10,
+                              message: e.target.value,
+                            },
+                          });
+                        }}
+                        placeholder={`e.g. Please upload your ${(q.acceptedFileTypes || ['PDF']).join('/')} file (max ${q.maxFileSizeMb || 10}MB).`}
+                        className="w-full min-h-[44px] px-3.5 py-2 bg-white border border-purple-200 rounded-xl text-xs sm:text-sm text-purple-950 placeholder:text-purple-300 focus:outline-hidden focus:ring-2 focus:ring-purple-400"
+                      />
+                    </div>
+
+                    {/* Informational Compatibility Notice */}
+                    <div className="flex items-start gap-2.5 p-3 rounded-xl bg-purple-100/70 border border-purple-200/80 text-xs text-purple-900 leading-relaxed">
+                      <Info className="w-4 h-4 text-purple-700 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold">Google Forms Tip:</span> Google Forms API requires enabling Drive storage manually. Upon publishing, open your form in Google Forms, switch this field type dropdown to <strong>File upload</strong>, and click <strong>Continue</strong> to connect your Google Drive.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Validation Rules Config Panel for Non-Upload Text Questions */}
+                {!isSection && q.type !== 'FILE_UPLOAD' && !isChoiceType && !isScale && (
+                  <div className="bg-slate-50/70 border border-slate-200 rounded-2xl p-3.5 sm:p-4 my-3 text-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                        <ShieldCheck className="w-4 h-4 text-blue-600" />
+                        <span>Input Validation Rule</span>
+                      </div>
+                      {q.validationRule?.type ? (
+                        <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                          Enforcing {q.validationRule.type} format
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-slate-500 font-medium">Standard Text (No format restriction)</span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                      <div className="sm:col-span-4">
+                        <select
+                          value={q.validationRule?.type || 'NONE'}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === 'NONE') {
+                              updateQuestion(q.id, { validationRule: undefined });
+                            } else {
+                              const defaultMsg =
+                                val === 'EMAIL'
+                                  ? 'Please enter a valid email address.'
+                                  : val === 'PHONE'
+                                  ? 'Please enter a valid phone number.'
+                                  : val === 'URL'
+                                  ? 'Please enter a valid URL (https://...).'
+                                  : val === 'NUMBER'
+                                  ? 'Please enter a valid numeric value.'
+                                  : 'Please check your answer format.';
+                              updateQuestion(q.id, {
+                                validationRule: {
+                                  type: val as any,
+                                  message: q.validationRule?.message || defaultMsg,
+                                },
+                              });
+                            }
+                          }}
+                          className="w-full min-h-[40px] px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-400 cursor-pointer"
+                        >
+                          <option value="NONE">None (Free Text)</option>
+                          <option value="EMAIL">✉️ Email Address Format</option>
+                          <option value="PHONE">📞 Phone Number Format</option>
+                          <option value="URL">🔗 Web / Portfolio URL</option>
+                          <option value="NUMBER">🔢 Number / Numeric Only</option>
+                          <option value="CUSTOM">⚙️ Custom Format</option>
+                        </select>
+                      </div>
+
+                      {q.validationRule?.type && (
+                        <div className="sm:col-span-8">
+                          <input
+                            type="text"
+                            value={q.validationRule.message || ''}
+                            onChange={(e) => {
+                              updateQuestion(q.id, {
+                                validationRule: {
+                                  ...(q.validationRule || { type: 'EMAIL' }),
+                                  message: e.target.value,
+                                },
+                              });
+                            }}
+                            placeholder="Custom error message when respondent enters invalid format..."
+                            className="w-full min-h-[40px] px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-400"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Question Image / Media Verification Diagnostic Panel */}
                 {!isSection && (
@@ -1137,6 +1585,8 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
           )}
         </div>
       </nav>
+      </>
+      )}
 
       {/* Interactive Google Form Preview Modal */}
       <FormPreviewModal

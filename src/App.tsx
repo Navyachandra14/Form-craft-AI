@@ -2,12 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { User } from 'firebase/auth';
 import { initAuth, googleSignIn, getAccessToken, logout } from './lib/auth';
 import { saveSchema, getSchema } from './lib/persistence';
+import { saveHistoryItem } from './lib/historyStorage';
 import { Navbar } from './components/Navbar';
 import { Dropzone } from './components/Dropzone';
 import { ParsingProgress } from './components/ParsingProgress';
 import { SchemaEditor, AUTOSAVE_STORAGE_KEY, AUTOSAVE_TIMESTAMP_KEY } from './components/SchemaEditor';
 import { SuccessView } from './components/SuccessView';
 import { ApiKeyModal } from './components/ApiKeyModal';
+import { HistoryModal } from './components/HistoryModal';
 import { StressTestPanel } from './components/StressTestPanel';
 import { SmartTemplate } from './components/SampleDocs';
 import {
@@ -50,7 +52,18 @@ export default function App() {
   });
   const [hasEnvKey, setHasEnvKey] = useState<boolean>(true);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isStressTestOpen, setIsStressTestOpen] = useState(false);
+  const [isDevMode] = useState<boolean>(() => {
+    try {
+      return (
+        window.location.search.includes('dev=true') ||
+        window.location.search.includes('test=true')
+      );
+    } catch {
+      return false;
+    }
+  });
   const [userAccessToken, setUserAccessToken] = useState<string | undefined>(undefined);
 
   // Sync user access token when logged in
@@ -88,10 +101,19 @@ export default function App() {
       saveSchema(parsedSchema).catch((err) => {
         console.warn('Draft auto-persist notice:', err);
       });
+      // Also update history item
+      try {
+        saveHistoryItem({
+          schema: parsedSchema,
+          sourceDocName: currentFileName || parsedSchema.title,
+        });
+      } catch (histErr) {
+        console.warn('History autosave notice:', histErr);
+      }
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [parsedSchema]);
+  }, [parsedSchema, currentFileName]);
 
   // Fetch backend Gemini configuration state
   useEffect(() => {
@@ -275,6 +297,14 @@ export default function App() {
 
       setParsedSchema(data.data);
       setStep('preview');
+      try {
+        saveHistoryItem({
+          schema: data.data,
+          sourceDocName: currentFileName || payload.fileName,
+        });
+      } catch (histErr) {
+        console.warn('History initial save notice:', histErr);
+      }
     } catch (error: any) {
       console.error('Parse error:', error);
       setErrorMessage(
@@ -336,6 +366,14 @@ export default function App() {
     if (template.prebuiltSchema) {
       setParsedSchema(template.prebuiltSchema);
       setStep('preview');
+      try {
+        saveHistoryItem({
+          schema: template.prebuiltSchema,
+          sourceDocName: template.name,
+        });
+      } catch (histErr) {
+        console.warn('History save notice:', histErr);
+      }
     } else {
       parseDocumentWithAI({
         textContent: template.content,
@@ -430,6 +468,15 @@ export default function App() {
 
       setCreatedForm(data.data);
       setStep('success');
+      try {
+        saveHistoryItem({
+          schema: parsedSchema,
+          createdForm: data.data,
+          sourceDocName: currentFileName || parsedSchema.title,
+        });
+      } catch (histErr) {
+        console.warn('History save on create notice:', histErr);
+      }
     } catch (error: any) {
       console.error('Creation error:', error);
       setErrorMessage(
@@ -441,6 +488,23 @@ export default function App() {
 
   const handleSchemaUpdated = (updatedSchema: ParsedFormSchema) => {
     setParsedSchema(updatedSchema);
+  };
+
+  const handleSelectHistoryForm = (schema: ParsedFormSchema, sourceDocName?: string) => {
+    setParsedSchema(schema);
+    setCurrentFileName(sourceDocName || schema.title || 'Saved Form');
+    setCreatedForm(null);
+    setErrorMessage(null);
+    setStep('preview');
+    setRestoredDraftInfo('Loaded from Saved History');
+  };
+
+  const handleSelectPublishedForm = (schema: ParsedFormSchema, formResult: CreateFormResponse) => {
+    setParsedSchema(schema);
+    setCurrentFileName(schema.title || 'Published Form');
+    setCreatedForm(formResult);
+    setStep('success');
+    setErrorMessage(null);
   };
 
   return (
@@ -455,14 +519,15 @@ export default function App() {
         isLoggingIn={isLoggingIn}
         onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
         apiKeyConfigured={Boolean(customApiKey.trim())}
-        onToggleStressTest={() => setIsStressTestOpen((prev) => !prev)}
+        onOpenHistory={() => setIsHistoryOpen(true)}
+        onToggleStressTest={isDevMode ? () => setIsStressTestOpen((prev) => !prev) : undefined}
         isStressTestOpen={isStressTestOpen}
       />
 
       {/* Main Container */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
         {/* Isolated Development-Only Stress Test Environment Panel */}
-        {isStressTestOpen && (
+        {isDevMode && isStressTestOpen && (
           <div className="mb-6">
             <StressTestPanel
               customApiKey={customApiKey}
@@ -536,6 +601,7 @@ export default function App() {
               onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
               apiKeyConfigured={Boolean(customApiKey.trim())}
               hasEnvKey={hasEnvKey}
+              onOpenHistory={() => setIsHistoryOpen(true)}
             />
           </div>
         )}
@@ -583,6 +649,7 @@ export default function App() {
         {step === 'success' && createdForm && (
           <SuccessView
             formData={createdForm}
+            schema={parsedSchema || undefined}
             onReset={handleReset}
           />
         )}
@@ -641,8 +708,10 @@ export default function App() {
             <div className="w-2 h-2 rounded-full bg-emerald-500" />
             <span>Google Forms API &amp; Gemini 2.5 Flash Connected</span>
           </div>
-          <div className="flex items-center gap-4">
-            <span>Fast, Private &amp; Local-First Processing</span>
+          <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 text-center sm:text-right text-[11px] text-slate-400">
+            <span>💡 <strong>Tip:</strong> File upload fields in Google Forms require opening the form once to link Google Drive storage.</span>
+            <span className="hidden sm:inline">•</span>
+            <span>Fast &amp; Local-First Processing</span>
           </div>
         </div>
       </footer>
@@ -654,6 +723,14 @@ export default function App() {
         apiKey={customApiKey}
         onSaveKey={handleSaveApiKey}
         hasEnvKey={hasEnvKey}
+      />
+
+      {/* Previous Forms & Work History Modal */}
+      <HistoryModal
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        onSelectForm={handleSelectHistoryForm}
+        onSelectPublishedForm={handleSelectPublishedForm}
       />
     </div>
   );
