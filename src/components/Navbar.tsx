@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileSpreadsheet, RotateCcw, LogOut, CheckCircle2, User as UserIcon, Sparkles, Key, FlaskConical, Clock } from 'lucide-react';
+import { FileSpreadsheet, RotateCcw, LogOut, CheckCircle2, User as UserIcon, Sparkles, Key, FlaskConical, Clock, HelpCircle } from 'lucide-react';
 import { User } from 'firebase/auth';
 
 interface NavbarProps {
@@ -12,8 +12,7 @@ interface NavbarProps {
   onOpenApiKeyModal: () => void;
   apiKeyConfigured: boolean;
   onOpenHistory?: () => void;
-  onToggleStressTest?: () => void;
-  isStressTestOpen?: boolean;
+  onOpenHelpGuide?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -26,8 +25,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenApiKeyModal,
   apiKeyConfigured,
   onOpenHistory,
-  onToggleStressTest,
-  isStressTestOpen,
+  onOpenHelpGuide,
 }) => {
   return (
     <header className="sticky top-0 z-30 w-full border-b border-slate-200/80 bg-white/95 backdrop-blur-md">
@@ -55,6 +53,20 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Actions */}
         <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* Help & Tutorials Button */}
+          {onOpenHelpGuide && (
+            <button
+              id="btn-nav-help-guide"
+              type="button"
+              onClick={onOpenHelpGuide}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 sm:py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-all shadow-2xs cursor-pointer"
+              title="Open FormCraft Help Guide & FAQ"
+            >
+              <HelpCircle className="h-3.5 w-3.5 text-blue-600" />
+              <span className="hidden sm:inline">Help &amp; Guide</span>
+            </button>
+          )}
+
           {/* History / Previous Forms Button */}
           {onOpenHistory && (
             <button
@@ -66,25 +78,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Clock className="h-3.5 w-3.5 text-indigo-600" />
               <span className="hidden sm:inline">History</span>
-            </button>
-          )}
-
-          {/* Stress Test V2 Toggle Button */}
-          {onToggleStressTest && (
-            <button
-              id="btn-nav-stress-test"
-              type="button"
-              onClick={onToggleStressTest}
-              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 sm:py-2 text-xs font-bold transition-all shadow-2xs cursor-pointer ${
-                isStressTestOpen
-                  ? 'border-indigo-400 bg-indigo-600 text-white shadow-sm'
-                  : 'border-indigo-200 bg-indigo-50/70 text-indigo-800 hover:bg-indigo-100'
-              }`}
-              title="Open Isolated V2 Stress Testing & Capability Matrix"
-            >
-              <FlaskConical className={`h-3.5 w-3.5 ${isStressTestOpen ? 'text-white' : 'text-indigo-600'}`} />
-              <span className="hidden sm:inline">Stress Test V2</span>
-              <span className="sm:hidden">Tests</span>
             </button>
           )}
 

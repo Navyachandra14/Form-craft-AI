@@ -22,6 +22,7 @@ import {
   Settings2,
   Search,
   Clock,
+  HelpCircle,
 } from 'lucide-react';
 import { SMART_TEMPLATES, SmartTemplate } from './SampleDocs';
 import { BriefConfig, ParsedFormSchema, ProjectCategory, Asset } from '../types';
@@ -56,6 +57,7 @@ interface DropzoneProps {
   apiKeyConfigured?: boolean;
   hasEnvKey?: boolean;
   onOpenHistory?: () => void;
+  onOpenHelpGuide?: () => void;
 }
 
 export const Dropzone: React.FC<DropzoneProps> = ({
@@ -68,6 +70,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
   apiKeyConfigured,
   hasEnvKey,
   onOpenHistory,
+  onOpenHelpGuide,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [activeTab, setActiveTab] = useState<'upload' | 'templates' | 'prompt'>('upload');
@@ -303,6 +306,19 @@ export const Dropzone: React.FC<DropzoneProps> = ({
           >
             <Clock className="w-4 h-4 text-indigo-600" />
             <span>Recent Forms &amp; Drafts</span>
+          </button>
+        )}
+
+        {onOpenHelpGuide && (
+          <button
+            id="btn-dropzone-open-help"
+            type="button"
+            onClick={onOpenHelpGuide}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-white border border-slate-200/90 hover:border-blue-300 hover:bg-blue-50/40 text-slate-700 hover:text-blue-900 text-xs sm:text-sm font-bold rounded-2xl shadow-2xs transition-all cursor-pointer"
+            title="Open Interactive Help Guide, Video Tutorials & FAQ"
+          >
+            <HelpCircle className="w-4 h-4 text-blue-600" />
+            <span>Help &amp; Video Tutorials</span>
           </button>
         )}
       </div>

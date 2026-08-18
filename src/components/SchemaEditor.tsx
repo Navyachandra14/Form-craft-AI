@@ -55,6 +55,8 @@ import { FormPreviewModal } from './FormPreviewModal';
 import { MediaVerificationPanel } from './MediaVerificationPanel';
 import { MediaDiagnosticOverview } from './MediaDiagnosticOverview';
 import { ActionableWorkflowPanel } from './ActionableWorkflowPanel';
+import { MathRenderer } from './MathRenderer';
+import { containsLatex } from '../lib/mathUtils';
 
 export const AUTOSAVE_STORAGE_KEY = 'formcraft_autosaved_schema';
 export const AUTOSAVE_TIMESTAMP_KEY = 'formcraft_autosaved_timestamp';
@@ -761,6 +763,16 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
                           placeholder="Enter Section Title..."
                           className="w-full text-base sm:text-lg font-bold px-4 py-3 bg-slate-800/90 border border-slate-700 text-white rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 placeholder:text-slate-500 shadow-inner"
                         />
+                        {containsLatex(q.title) && (
+                          <div className="mt-2 p-2.5 rounded-xl bg-slate-800/90 border border-indigo-500/40 text-xs text-indigo-200 flex items-start gap-2">
+                            <span className="px-1.5 py-0.5 rounded bg-indigo-500/30 text-indigo-300 border border-indigo-400/30 text-[10px] font-bold shrink-0 uppercase tracking-wider">
+                              Math Preview
+                            </span>
+                            <div className="flex-1 overflow-x-auto text-sm text-white">
+                              <MathRenderer text={q.title} />
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div>
@@ -775,6 +787,16 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
                           placeholder="Helper instructions or context for this section..."
                           className="w-full text-xs sm:text-sm px-4 py-2.5 bg-slate-800/60 border border-slate-700/80 text-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-400 placeholder:text-slate-500"
                         />
+                        {q.description && containsLatex(q.description) && (
+                          <div className="mt-2 p-2 rounded-xl bg-slate-800/90 border border-indigo-500/30 text-xs text-indigo-200 flex items-start gap-2">
+                            <span className="px-1.5 py-0.5 rounded bg-indigo-500/30 text-indigo-300 text-[10px] font-bold shrink-0 uppercase tracking-wider">
+                              Math Preview
+                            </span>
+                            <div className="flex-1 overflow-x-auto text-xs text-slate-200">
+                              <MathRenderer text={q.description} />
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Quick Action: Add Question Below this Section */}
@@ -957,6 +979,16 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
                       placeholder="Question Title..."
                       className="w-full min-h-[48px] text-sm sm:text-base font-semibold px-4 py-3 bg-slate-50/70 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-800 focus:bg-white text-slate-900 touch-manipulation"
                     />
+                    {containsLatex(q.title) && (
+                      <div className="mt-2 p-2.5 rounded-xl bg-amber-50/80 border border-amber-200 text-xs text-slate-800 flex items-start gap-2 shadow-2xs">
+                        <span className="px-1.5 py-0.5 rounded bg-amber-200/90 text-amber-900 font-bold text-[10px] uppercase tracking-wider shrink-0">
+                          Math Preview
+                        </span>
+                        <div className="flex-1 overflow-x-auto text-sm text-slate-900">
+                          <MathRenderer text={q.title} />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Type Selector */}
@@ -1007,6 +1039,16 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
                     placeholder="Helper description or guidance (optional)..."
                     className="w-full min-h-[44px] text-xs sm:text-sm px-4 py-2.5 bg-slate-50/50 border border-slate-200/80 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-800 text-slate-600 touch-manipulation"
                   />
+                  {q.description && containsLatex(q.description) && (
+                    <div className="mt-1.5 p-2 rounded-xl bg-slate-100/90 border border-slate-200 text-xs text-slate-800 flex items-start gap-2">
+                      <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-bold text-[10px] uppercase tracking-wider shrink-0">
+                        Math Preview
+                      </span>
+                      <div className="flex-1 overflow-x-auto text-xs text-slate-700">
+                        <MathRenderer text={q.description} />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* FILE_UPLOAD Dedicated Configuration Panel */}
@@ -1278,32 +1320,44 @@ export const SchemaEditor: React.FC<SchemaEditorProps> = ({
                       Options
                     </span>
                     {(q.options || ['Option 1']).map((opt, optIdx) => (
-                      <div key={optIdx} className="flex items-center gap-2">
-                        <div className="w-5 h-5 flex items-center justify-center text-slate-400 shrink-0">
-                          {q.type === 'CHECKBOX' ? (
-                            <CheckSquare className="w-4 h-4 text-slate-500" />
-                          ) : (
-                            <CircleDot className="w-4 h-4 text-slate-500" />
+                      <div key={optIdx} className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <div className="w-5 h-5 flex items-center justify-center text-slate-400 shrink-0">
+                            {q.type === 'CHECKBOX' ? (
+                              <CheckSquare className="w-4 h-4 text-slate-500" />
+                            ) : (
+                              <CircleDot className="w-4 h-4 text-slate-500" />
+                            )}
+                          </div>
+                          <input
+                            id={`question-${index}-option-${optIdx}`}
+                            type="text"
+                            value={opt}
+                            onChange={(e) => updateOptionText(q.id, optIdx, e.target.value)}
+                            placeholder={`Option ${optIdx + 1}`}
+                            className="flex-1 min-h-[44px] text-xs sm:text-sm px-3.5 py-2.5 bg-slate-50/70 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-800 text-slate-800 font-medium touch-manipulation"
+                          />
+                          {(q.options?.length || 0) > 1 && (
+                            <button
+                              id={`btn-remove-option-${index}-${optIdx}`}
+                              type="button"
+                              onClick={() => removeOption(q.id, optIdx)}
+                              className="min-w-[44px] min-h-[44px] p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 active:bg-rose-100 rounded-xl flex items-center justify-center transition-colors cursor-pointer touch-manipulation"
+                              title="Remove option"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           )}
                         </div>
-                        <input
-                          id={`question-${index}-option-${optIdx}`}
-                          type="text"
-                          value={opt}
-                          onChange={(e) => updateOptionText(q.id, optIdx, e.target.value)}
-                          placeholder={`Option ${optIdx + 1}`}
-                          className="flex-1 min-h-[44px] text-xs sm:text-sm px-3.5 py-2.5 bg-slate-50/70 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-slate-900/10 focus:border-slate-800 text-slate-800 font-medium touch-manipulation"
-                        />
-                        {(q.options?.length || 0) > 1 && (
-                          <button
-                            id={`btn-remove-option-${index}-${optIdx}`}
-                            type="button"
-                            onClick={() => removeOption(q.id, optIdx)}
-                            className="min-w-[44px] min-h-[44px] p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 active:bg-rose-100 rounded-xl flex items-center justify-center transition-colors cursor-pointer touch-manipulation"
-                            title="Remove option"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                        {containsLatex(opt) && (
+                          <div className="ml-7 p-1.5 px-2.5 rounded-lg bg-indigo-50/70 border border-indigo-200/80 text-xs text-indigo-950 flex items-center gap-2">
+                            <span className="px-1 py-0.2 rounded bg-indigo-200 text-indigo-900 text-[9px] font-bold shrink-0 uppercase tracking-wider">
+                              Math
+                            </span>
+                            <div className="flex-1 overflow-x-auto text-xs">
+                              <MathRenderer text={opt} />
+                            </div>
+                          </div>
                         )}
                       </div>
                     ))}

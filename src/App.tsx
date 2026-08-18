@@ -10,6 +10,8 @@ import { SchemaEditor, AUTOSAVE_STORAGE_KEY, AUTOSAVE_TIMESTAMP_KEY } from './co
 import { SuccessView } from './components/SuccessView';
 import { ApiKeyModal } from './components/ApiKeyModal';
 import { HistoryModal } from './components/HistoryModal';
+import { HelpGuide } from './components/HelpGuide';
+import { WelcomeTour } from './components/WelcomeTour';
 import { StressTestPanel } from './components/StressTestPanel';
 import { SmartTemplate } from './components/SampleDocs';
 import {
@@ -53,17 +55,27 @@ export default function App() {
   const [hasEnvKey, setHasEnvKey] = useState<boolean>(true);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isHelpGuideOpen, setIsHelpGuideOpen] = useState(false);
   const [isStressTestOpen, setIsStressTestOpen] = useState(false);
-  const [isDevMode] = useState<boolean>(() => {
+  const [isWelcomeTourOpen, setIsWelcomeTourOpen] = useState<boolean>(() => {
     try {
-      return (
-        window.location.search.includes('dev=true') ||
-        window.location.search.includes('test=true')
-      );
+      return localStorage.getItem('formcraft_seen_welcome_tour') !== 'true';
     } catch {
       return false;
     }
   });
+
+  // Global Keyboard Shortcut: Ctrl+Shift+D or Cmd+Shift+D to toggle Dev Mode / Stress Test Lab
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+        e.preventDefault();
+        setIsStressTestOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
   const [userAccessToken, setUserAccessToken] = useState<string | undefined>(undefined);
 
   // Sync user access token when logged in
@@ -239,14 +251,13 @@ export default function App() {
         headers['x-gemini-api-key'] = customApiKey.trim();
       }
 
-      // Optimize payload: If digital text was already extracted, avoid sending redundant multi-MB raw base64 document
+      // Optimize payload: For text-only PDFs without visual assets, avoid sending redundant raw PDF binary
       const payloadToSend: any = { ...payload };
       if (
         payloadToSend.textContent &&
         payloadToSend.textContent.trim().length > 30 &&
-        (payloadToSend.mimeType === 'application/pdf' ||
-          payloadToSend.fileName?.toLowerCase().endsWith('.pdf') ||
-          payloadToSend.fileName?.toLowerCase().endsWith('.docx'))
+        payloadToSend.mimeType === 'application/pdf' &&
+        (!payloadToSend.extractedAssets || payloadToSend.extractedAssets.length === 0)
       ) {
         delete payloadToSend.fileBase64;
       }
@@ -267,30 +278,41 @@ export default function App() {
         });
       } catch (fetchErr: any) {
         if (fetchErr.name === 'AbortError') {
-          throw new Error('Document processing timed out after 3 minutes. Please click "Retry Processing" or enter a Gemini API key in Settings.');
+          throw new Error(
+            'Document processing timed out after 3 minutes. Please click "Retry Processing" or enter a dedicated Gemini API key in API Settings.'
+          );
         }
+        const netMsg = fetchErr.message ? ` (${fetchErr.message})` : '';
         throw new Error(
-          'Network connection interrupted while connecting to the document parsing service. Please check your internet connection or verify your API key in Settings.'
+          `Unable to connect to the document parsing service${netMsg}. Please check your internet connection or verify your API key in Settings.`
         );
       } finally {
         clearTimeout(timeoutId);
       }
 
       let data: any = null;
+      let rawText = '';
       try {
-        const text = await response.text();
-        data = text ? JSON.parse(text) : null;
+        rawText = await response.text();
+        data = rawText ? JSON.parse(rawText) : null;
       } catch (jsonErr) {
-        console.warn('Response was not valid JSON:', jsonErr);
+        console.warn('Response was not valid JSON:', jsonErr, rawText.slice(0, 150));
       }
 
       if (!response.ok || !data?.success) {
+        const isHtml = rawText && rawText.trim().startsWith('<');
         const errMessage =
           data?.error ||
           (response.status === 413
-            ? 'The uploaded file is too large for web transfer. Please use a smaller file or copy-paste text.'
+            ? 'The uploaded file payload is too large. Please use a smaller file or copy-paste the text content.'
             : response.status === 429
-            ? 'Rate limit reached or server busy. Please retry in a few moments or provide a custom Gemini API key.'
+            ? 'Rate limit reached on public Gemini pool. Please retry in a few moments or enter your Gemini API key in API Settings.'
+            : response.status === 504
+            ? 'Document processing timed out on the server (504). Please retry or provide a dedicated Gemini API key.'
+            : response.status === 404
+            ? 'Document parsing endpoint not found (404). Please ensure the backend server or serverless route is active.'
+            : isHtml
+            ? `Server responded with status ${response.status} (non-JSON). Please retry or check server routes.`
             : `Server processing notice (${response.status}). Please try again.`);
         throw new Error(errMessage);
       }
@@ -520,15 +542,14 @@ export default function App() {
         onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
         apiKeyConfigured={Boolean(customApiKey.trim())}
         onOpenHistory={() => setIsHistoryOpen(true)}
-        onToggleStressTest={isDevMode ? () => setIsStressTestOpen((prev) => !prev) : undefined}
-        isStressTestOpen={isStressTestOpen}
+        onOpenHelpGuide={() => setIsHelpGuideOpen(true)}
       />
 
       {/* Main Container */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
-        {/* Isolated Development-Only Stress Test Environment Panel */}
-        {isDevMode && isStressTestOpen && (
-          <div className="mb-6">
+        {/* Stress Testing & Diagnostics Lab Panel */}
+        {isStressTestOpen && (
+          <div className="mb-6 animate-in fade-in duration-200">
             <StressTestPanel
               customApiKey={customApiKey}
               userAccessToken={userAccessToken}
@@ -602,6 +623,7 @@ export default function App() {
               apiKeyConfigured={Boolean(customApiKey.trim())}
               hasEnvKey={hasEnvKey}
               onOpenHistory={() => setIsHistoryOpen(true)}
+              onOpenHelpGuide={() => setIsHelpGuideOpen(true)}
             />
           </div>
         )}
@@ -702,19 +724,40 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200/80 bg-white py-6">
+      <footer className="border-t border-slate-200/80 bg-white py-5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
-          <div className="flex items-center gap-2 font-medium">
-            <div className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span>Google Forms API &amp; Gemini 2.5 Flash Connected</span>
+          <div className="flex items-center gap-3 font-medium">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span>Google Forms API &amp; Gemini 2.5 Flash Connected</span>
+            </div>
+            <span className="text-slate-300">•</span>
+            <button
+              type="button"
+              onClick={() => setIsStressTestOpen((prev) => !prev)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-mono text-[11px] font-bold transition-colors cursor-pointer"
+              title="Toggle Developer Stress Test & Diagnostics Lab"
+            >
+              <span>🧪 Stress Test Lab</span>
+              <kbd className="px-1 py-0.2 bg-white border border-slate-200 rounded text-[9px] text-slate-400">
+                Ctrl+Shift+D
+              </kbd>
+            </button>
           </div>
           <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 text-center sm:text-right text-[11px] text-slate-400">
-            <span>💡 <strong>Tip:</strong> File upload fields in Google Forms require opening the form once to link Google Drive storage.</span>
+            <span>💡 File upload fields in Google Forms link to Google Drive storage automatically.</span>
             <span className="hidden sm:inline">•</span>
             <span>Fast &amp; Local-First Processing</span>
           </div>
         </div>
       </footer>
+
+      {/* Welcome Tour Component */}
+      <WelcomeTour
+        isOpen={isWelcomeTourOpen}
+        onClose={() => setIsWelcomeTourOpen(false)}
+        onOpenHelpGuide={() => setIsHelpGuideOpen(true)}
+      />
 
       {/* Gemini API Key Configuration Modal */}
       <ApiKeyModal
@@ -731,6 +774,13 @@ export default function App() {
         onClose={() => setIsHistoryOpen(false)}
         onSelectForm={handleSelectHistoryForm}
         onSelectPublishedForm={handleSelectPublishedForm}
+      />
+
+      {/* Help Guide & Reference */}
+      <HelpGuide
+        isOpen={isHelpGuideOpen}
+        onClose={() => setIsHelpGuideOpen(false)}
+        onStartTour={() => setIsWelcomeTourOpen(true)}
       />
     </div>
   );

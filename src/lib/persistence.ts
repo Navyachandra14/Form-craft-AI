@@ -218,3 +218,50 @@ function getLocalStorageBackup(): any | null {
   return null;
 }
 
+/**
+ * Specifically purges test/lab records from IndexedDB without affecting actual application drafts
+ */
+export const clearTestIndexedDBRecords = async (): Promise<{ purgedKeys: string[] }> => {
+  const purgedKeys: string[] = [];
+  try {
+    const db = await openDB();
+    if (!db) return { purgedKeys };
+
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.getAllKeys();
+
+        req.onsuccess = () => {
+          const keys = req.result || [];
+          for (const key of keys) {
+            const keyStr = String(key);
+            // Only purge test/lab/synthetic records, NEVER 'currentSchema' (actual user draft)
+            if (
+              keyStr.startsWith('test_') ||
+              keyStr.startsWith('lab_') ||
+              keyStr.startsWith('synthetic_') ||
+              keyStr.startsWith('stress_') ||
+              keyStr.startsWith('benchmark_') ||
+              keyStr === 'testSchema'
+            ) {
+              store.delete(key);
+              purgedKeys.push(keyStr);
+            }
+          }
+          resolve({ purgedKeys });
+        };
+
+        req.onerror = () => {
+          resolve({ purgedKeys });
+        };
+      } catch {
+        resolve({ purgedKeys });
+      }
+    });
+  } catch {
+    return { purgedKeys };
+  }
+};
+

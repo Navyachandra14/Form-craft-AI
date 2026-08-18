@@ -1106,5 +1106,318 @@ Section 3: Qualitative Feedback & Recommendations
       return `Case ${caseNum}: Industrial Anomaly Scenario ${caseNum}\n1. Classification:\n   ( ) Class A\n   ( ) Class B\n   ( ) Class C\n   ( ) Class D\n2. Corrective Action:\n   [Paragraph text]`;
     }).join('\n\n'),
   },
+
+  {
+    id: 'LAB-VAR-8-STEM-EXAM',
+    name: 'Variation 8: Advanced STEM & Multivariable Calculus Comprehensive Exam',
+    badge: 'LaTeX Math & Code Rubric',
+    documentType: 'Academic Rubric',
+    simulatedFormat: 'PDF',
+    fileName: 'multivariable_calculus_advanced_exam.pdf',
+    fileMimeType: 'application/pdf',
+    expectedQuestions: 8,
+    expectedExhibits: 1,
+    description:
+      'Rigorous STEM university examination featuring mathematical equations ($$E=mc^2$$, Gaussian integrals, eigenvalues), multiple choice questions with answer keys, and grading point rubrics.',
+    highlightedFeatures: [
+      'LaTeX Mathematical Formula Preservation ($$\\int_{0}^{\\infty} e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}$$)',
+      'Vector Coordinate Diagram Reference Exhibit',
+      'Automated Answer Key & Grading Rubric Detection',
+      'Python/Numerical Code Implementation Rubric',
+    ],
+    driftVerificationCriteria: {
+      description: 'Mathematical LaTeX notation and coordinate diagram must remain paired with calculus questions.',
+      targetAssociations: [
+        { caseTitle: 'Problem 3: Gradient Vector Field', expectedAssetLabel: 'GREEN TRIANGLE', shouldHaveImage: true },
+      ],
+    },
+    mockAssets: [
+      {
+        assetId: 'asset_vector_diagram',
+        type: 'IMAGE',
+        mimeType: 'image/png',
+        source: 'png-data',
+        page: 1,
+        sourceLocation: 'Problem 3 Vector Layout',
+        dataUrl: CONTROL_IMAGES.GREEN_TRIANGLE,
+        associatedSection: 'Problem 3',
+        description: 'Vector gradient field diagram',
+      },
+    ],
+    content: `DEPARTMENT OF MATHEMATICAL SCIENCES — ADVANCED CALCULUS & LINEAR SYSTEMS EXAM
+
+Section 1: Candidate Identification
+1. Student Full Name (Required short text)
+2. University Student ID Number (Required, 8 digits)
+
+Section 2: Multivariable Integration & Analysis (Multiple Choice)
+3. Problem 1: Evaluate the improper Gaussian integral $$I = \\int_{-\\infty}^{\\infty} e^{-x^2} dx$$. Select the exact analytical solution:
+   ( ) $$\\sqrt{\\pi}$$ [Correct: 5 Points]
+   ( ) $$\\pi$$
+   ( ) $$\\frac{\\sqrt{\\pi}}{2}$$
+   ( ) $$2\\pi$$
+
+4. Problem 2: Determine the eigenvalues of the symmetric matrix $$A = \\begin{pmatrix} 2 & 1 \\\\ 1 & 2 \\end{pmatrix}$$.
+   ( ) $$\\lambda_1 = 3, \\lambda_2 = 1$$ [Correct: 5 Points]
+   ( ) $$\\lambda_1 = 2, \\lambda_2 = 2$$
+   ( ) $$\\lambda_1 = 4, \\lambda_2 = 0$$
+   ( ) $$\\lambda_1 = -1, \\lambda_2 = 3$$
+
+Section 3: Vector Geometry & Coordinate Fields
+5. Problem 3: Refer to the vector gradient field layout diagram above. Calculate the divergence $$\\nabla \\cdot \\mathbf{F}$$ at the origin $$(0,0)$$:
+   ( ) Zero divergence (Incompressible flow) [Correct: 10 Points]
+   ( ) Positive divergence (Source)
+   ( ) Negative divergence (Sink)
+
+Section 4: Derivations & Computational Implementation
+6. Problem 4: Write the mathematical proof showing that any conservative vector field satisfies $$\\nabla \\times \\mathbf{F} = \\mathbf{0}$$. (Paragraph text, Required, 15 Points)
+7. Problem 5: Upload your handwritten step-by-step calculus derivation sheet. (Required PDF or PNG, max 10MB)
+8. Problem 6: Self-Assessment & Exam Honor Pledge:
+   [ ] I confirm on my honor that all mathematical derivations are my own independent work.`,
+    sampleFileDownloadText: `ADVANCED CALCULUS EXAM\n\n1. Student Name (Required)\n2. Student ID (Required)\n3. Gaussian Integral: Evaluate I = int e^(-x^2) dx\n   ( ) sqrt(pi) [Correct]\n   ( ) pi\n4. Eigenvalues of A = [[2,1],[1,2]]:\n   ( ) lambda = 3, 1 [Correct]\n   ( ) lambda = 2, 2\n5. Divergence at origin:\n   ( ) Zero [Correct]\n   ( ) Positive\n6. Conservative Field Proof (Paragraph)\n7. Upload Hand-written Proof (PDF)\n8. Honor Pledge Checkbox`,
+  },
+
+  {
+    id: 'LAB-VAR-9-SECURITY-AUDIT',
+    name: 'Variation 9: Enterprise Security & Data Privacy Compliance Audit',
+    badge: 'SOC2 & ISO 27001',
+    documentType: 'Technical Job Brief',
+    simulatedFormat: 'DOCX',
+    fileName: 'vendor_security_risk_and_gdpr_audit.docx',
+    fileMimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    expectedQuestions: 9,
+    expectedExhibits: 1,
+    description:
+      'In-depth enterprise vendor risk questionnaire covering SOC 2 Type II certifications, GDPR data processing agreements, zero-trust network diagrams, and incident response SLAs.',
+    highlightedFeatures: [
+      'Multi-Option Compliance Standard Checkboxes',
+      'Data Residency Geographic Dropdown',
+      'Security Architecture Topology Diagram',
+      'Incident Response SLA Linear Rating Scale',
+    ],
+    driftVerificationCriteria: {
+      description: 'Zero-trust architecture diagram must be bound to Section 2 infrastructure questions.',
+      targetAssociations: [
+        { caseTitle: 'Network Architecture Topology', expectedAssetLabel: 'YELLOW X', shouldHaveImage: true },
+      ],
+    },
+    mockAssets: [
+      {
+        assetId: 'asset_sec_topo',
+        type: 'IMAGE',
+        mimeType: 'image/png',
+        source: 'png-data',
+        page: 1,
+        sourceLocation: 'Section 2 Topology',
+        dataUrl: CONTROL_IMAGES.YELLOW_X,
+        associatedSection: 'Network Architecture',
+        description: 'Zero-trust network architecture topology exhibit',
+      },
+    ],
+    content: `ENTERPRISE VENDOR RISK MANAGEMENT — SECURITY & PRIVACY AUDIT
+
+Section 1: Vendor & Organization Overview
+1. Vendor Legal Corporate Name (Required short text)
+2. Chief Information Security Officer (CISO) or Data Protection Officer Email (Required email)
+3. Primary Data Hosting Cloud Provider:
+   ( ) Google Cloud Platform (GCP)
+   ( ) Amazon Web Services (AWS)
+   ( ) Microsoft Azure
+   ( ) On-Premise / Private Colocation
+
+Section 2: Security Certifications & Compliance
+4. Active Third-Party Security Attestations (Select all that apply):
+   [ ] SOC 2 Type II Report (Within past 12 months)
+   [ ] ISO/IEC 27001:2022 Certified
+   [ ] HIPAA / HITECH Compliance Attestation
+   [ ] PCI-DSS Level 1 Service Provider
+   [ ] FedRAMP Authorized
+   [ ] None of the above
+
+5. Network Architecture Topology: Refer to the Zero-Trust network diagram above. Does your production environment isolate tenant workloads via VPC peering or strict micro-segmentation?
+   ( ) Yes, strict tenant boundary isolation
+   ( ) Partial isolation at database layer
+   ( ) Multi-tenant shared infrastructure
+
+Section 3: Incident Response & Data Protection
+6. Guaranteed Critical Security Incident Notification SLA:
+   ( ) Within 4 Hours
+   ( ) Within 12 Hours
+   ( ) Within 24 Hours
+   ( ) Within 72 Hours (GDPR Standard)
+7. Production System Availability & Uptime Commitment (Score 1 to 5: 1 = 99.0%, 3 = 99.9%, 5 = 99.99% High Availability)
+8. Upload latest SOC 2 Type II or ISO 27001 Executive Summary (Required PDF format, max 20MB)
+9. Data Protection Agreement (DPA) Execution Declaration:
+   [ ] We certify that our organization executes Standard Contractual Clauses (SCCs) and GDPR DPAs.`,
+    sampleFileDownloadText: `SECURITY & PRIVACY AUDIT\n\n1. Vendor Legal Name (Required)\n2. CISO Email (Required)\n3. Cloud Provider (Radio)\n4. Active Certifications (Checkboxes: SOC2, ISO27001, HIPAA, PCI)\n5. Network Topology Isolation (Radio)\n6. Incident SLA (Radio)\n7. System Uptime (Scale 1-5)\n8. Upload SOC2 Report (PDF)\n9. DPA Declaration Checkbox`,
+  },
+
+  {
+    id: 'LAB-VAR-10-FELLOWSHIP-GRANT',
+    name: 'Variation 10: University Graduate Fellowship & Research Grant Intake',
+    badge: 'Higher Ed & Grants',
+    documentType: 'Academic Rubric',
+    simulatedFormat: 'PDF',
+    fileName: 'graduate_fellowship_and_research_grant.pdf',
+    fileMimeType: 'application/pdf',
+    expectedQuestions: 10,
+    expectedExhibits: 0,
+    description:
+      'Comprehensive graduate fellowship application requiring research proposal statements, academic advisor references, publication URLs, and multi-disciplinary specialty categorization.',
+    highlightedFeatures: [
+      'Multi-Disciplinary Research Field Checkboxes',
+      'ORCID ID and Google Scholar Profile Validation',
+      'Curriculum Vitae and Research Proposal PDF Uploads',
+      'Linear Self-Assessment Rating on Research Readiness',
+    ],
+    driftVerificationCriteria: {
+      description: 'All 10 grant application questions must be structured cleanly with proper field typing.',
+      targetAssociations: [],
+    },
+    content: `NATIONAL RESEARCH FOUNDATION — POSTDOCTORAL FELLOWSHIP APPLICATION
+
+Section 1: Principal Investigator Details
+1. Applicant Full Legal Name (Required short text)
+2. Current Academic Affiliation & Department (Required short text)
+3. Institutional Email Address (Required institutional email)
+4. ORCID Identifier or Google Scholar Profile URL (Required URL)
+
+Section 2: Proposed Research Domain
+5. Primary Scientific Domain (Select all applicable disciplines):
+   [ ] Artificial Intelligence & Machine Learning
+   [ ] Quantum Information Science
+   [ ] Computational Biology & Genomics
+   [ ] Renewable Energy & Clean Tech
+   [ ] Materials Science & Nanotechnology
+
+6. Title of Proposed 24-Month Research Project (Required short text)
+7. Executive Summary of Research Aims & Methodology (Paragraph text, max 500 words, Required)
+
+Section 3: Supporting Documentation & Self-Assessment
+8. Self-Rated Methodological & Statistical Readiness (Scale 1 to 5: 1 = Foundational, 5 = World-Class Expert)
+9. Upload Comprehensive Research Proposal & Project Budget (Required PDF, max 15MB)
+10. Upload Academic Transcripts & Letters of Recommendation (Required PDF, max 25MB)`,
+    sampleFileDownloadText: `POSTDOCTORAL FELLOWSHIP APPLICATION\n\n1. Applicant Full Name (Required)\n2. Academic Affiliation (Required)\n3. Institutional Email (Required)\n4. ORCID / Scholar URL (Required)\n5. Scientific Domain Checkboxes\n6. Proposed Project Title\n7. Executive Summary (Paragraph)\n8. Self-Rated Readiness (Scale 1-5)\n9. Upload Research Proposal (PDF)\n10. Upload Transcripts (PDF)`,
+  },
+
+  {
+    id: 'LAB-VAR-11-CSAT-MULTILINGUAL',
+    name: 'Variation 11: Multilingual Global Customer Experience & CSAT Feedback',
+    badge: 'NPS & Multilingual',
+    documentType: 'Scanned QA Form',
+    simulatedFormat: 'MARKDOWN',
+    fileName: 'global_customer_satisfaction_survey.md',
+    fileMimeType: 'text/markdown',
+    expectedQuestions: 8,
+    expectedExhibits: 0,
+    description:
+      'Internationalized feedback questionnaire incorporating standard 0-10 Net Promoter Score (NPS), multilingual French/Spanish/English headers, and feature satisfaction matrix ratings.',
+    highlightedFeatures: [
+      'Standard 0-10 Net Promoter Score (NPS) Scale',
+      'Multilingual Multi-Select Product Feature Matrix',
+      'Customer Purchase Channel Radio Group',
+      'Open-Ended Testimonial & Improvement Paragraph',
+    ],
+    driftVerificationCriteria: {
+      description: 'NPS rating scale and multilingual feedback must be converted to standard Google Forms items.',
+      targetAssociations: [],
+    },
+    content: `# Global Customer Experience & Satisfaction Survey (Enquête de Satisfaction)
+
+Thank you for choosing our platform. Please share your candid feedback. (Merci de partager vos commentaires.)
+
+## Section 1: Customer Profile
+1. Customer Name or Organization (Optional short text)
+2. Primary Country / Region of Operation:
+   ( ) North America (USA, Canada)
+   ( ) Europe & UK
+   ( ) Asia-Pacific & Japan
+   ( ) Latin America
+   ( ) Middle East & Africa
+
+## Section 2: Core Experience & NPS Scoring
+3. On a scale of 0 to 10, how likely are you to recommend our solution to a colleague or partner? (Scale 0 to 10: 0 = Not Likely at All, 10 = Extremely Likely)
+4. Overall Platform Ease of Use & Onboarding Experience (Scale 1 to 5: 1 = Difficult, 5 = Effortless)
+5. Which product capabilities provide the highest daily value? (Select all that apply):
+   [ ] Document-to-Form AI Conversion
+   [ ] Google Sheets Real-Time Synchronization
+   [ ] LaTeX Math & Equation Parsing
+   [ ] Visual Diagram & Asset Fidelity
+   [ ] Multi-User Collaboration
+
+## Section 3: Open Feedback & Testimonials
+6. What specific features or enhancements would you like to see next? (Paragraph text)
+7. Would you be willing to be featured in an upcoming customer case study?
+   ( ) Yes, please contact me
+   ( ) Maybe in the future
+   ( ) No, keep feedback anonymous
+8. Primary Account Contact Email (Required for follow-up, email format)`,
+    sampleFileDownloadText: `# Customer Satisfaction Survey\n\n1. Customer Name (Optional)\n2. Country Region (Radio)\n3. Net Promoter Score (Scale 0 to 10)\n4. Ease of Use (Scale 1 to 5)\n5. Value Features (Checkboxes)\n6. Feature Enhancements (Paragraph)\n7. Case Study Permission (Radio)\n8. Contact Email (Required)`,
+  },
+
+  {
+    id: 'LAB-VAR-12-CLOUD-RFC',
+    name: 'Variation 12: Distributed Cloud Architecture RFC & Design Review',
+    badge: 'System Design & RFC',
+    documentType: 'Technical Job Brief',
+    simulatedFormat: 'DOCX',
+    fileName: 'distributed_cloud_architecture_rfc.docx',
+    fileMimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    expectedQuestions: 8,
+    expectedExhibits: 1,
+    description:
+      'Engineering Request for Comments (RFC) assessment evaluating distributed database latency trade-offs, consensus algorithms, microservice topologies, and deployment readiness.',
+    highlightedFeatures: [
+      'Distributed Consensus & Database Selection Radio Options',
+      'P99 Latency SLA Numeric Restriction Validation',
+      'System Architecture Topology Diagram Control Exhibit',
+      'Architectural Trade-Off Narrative Paragraph Evaluation',
+    ],
+    driftVerificationCriteria: {
+      description: 'Architecture topology must match Section 2 microservices question with zero drift.',
+      targetAssociations: [
+        { caseTitle: 'Microservice Gateway Topology', expectedAssetLabel: 'BLUE CIRCLE', shouldHaveImage: true },
+      ],
+    },
+    mockAssets: [
+      {
+        assetId: 'asset_rfc_topo',
+        type: 'IMAGE',
+        mimeType: 'image/png',
+        source: 'png-data',
+        page: 1,
+        sourceLocation: 'Section 2 Microservices',
+        dataUrl: CONTROL_IMAGES.BLUE_CIRCLE,
+        associatedSection: 'Microservices Architecture',
+        description: 'Microservice API gateway architecture topology',
+      },
+    ],
+    content: `REQUEST FOR COMMENTS (RFC-2048) — DISTRIBUTED RESILIENT DATA PLATFORM
+
+Section 1: Author & Service Metadata
+1. Lead Architecture Author Name (Required short text)
+2. Target Production Service Identifier (e.g., srv-auth-gateway, Required)
+3. Target Production Release Quarter (Dropdown: Q1 2026, Q2 2026, Q3 2026, Q4 2026)
+
+Section 2: Architectural Strategy & Topology
+4. Microservice Gateway Topology: Refer to the blue circle architecture diagram above. What is the recommended service-mesh ingress protocol?
+   ( ) gRPC with HTTP/2 Multiplexing
+   ( ) REST with JSON Payloads
+   ( ) GraphQL Unified Subgraphs
+   ( ) WebSocket Bidirectional Stream
+
+5. Primary Distributed Storage Engine:
+   ( ) Google Cloud Spanner (TrueTime, Globally Consistent)
+   ( ) Cloud SQL PostgreSQL with Read Replicas
+   ( ) Firestore (Document NoSQL with Realtime Listeners)
+   ( ) Bigtable (High-Throughput Key-Value)
+
+Section 3: Non-Functional Requirements & Approval
+6. Target P99 Latency SLA under Peak Load (Milliseconds, e.g. 50, Number format, Required)
+7. Critical Failure Modes & Chaos Engineering Recovery Strategy (Paragraph text, Required)
+8. Technical Review Board RFC Approval Sign-Off:
+   [ ] I confirm that this RFC satisfies cloud security, cost modeling, and latency criteria.`,
+    sampleFileDownloadText: `DISTRIBUTED ARCHITECTURE RFC\n\n1. Author Name (Required)\n2. Service ID (Required)\n3. Release Quarter (Dropdown)\n4. Gateway Protocol (Radio)\n5. Storage Engine (Radio: Spanner, Cloud SQL, Firestore, Bigtable)\n6. P99 Latency SLA (Number)\n7. Failure Recovery Strategy (Paragraph)\n8. Review Board Sign-Off (Checkbox)`,
+  },
 ];
 

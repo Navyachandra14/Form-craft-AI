@@ -5,6 +5,7 @@ import {
   STRESS_TEST_FIXTURES,
 } from './stressTestFixtures';
 import { ParsedFormSchema, FormQuestion, Asset } from '../types';
+import { clearTestIndexedDBRecords } from './persistence';
 
 export interface TestResultReport {
   testId: string;
@@ -342,6 +343,53 @@ export function auditStorageAndCache(): StorageAuditResult {
       'Server-side asset caches use SHA-256 request-scoped mappings that purge automatically.',
       'Firestore collections are isolated strictly by authenticated user UID.',
     ],
+  };
+}
+
+/**
+ * Specifically cleans all test records, lab caches, and test fixtures from
+ * IndexedDB and LocalStorage, leaving actual application data, drafts, and API keys completely intact.
+ */
+export async function purgeTestStorageAndCaches(): Promise<{
+  purgedIndexedDBKeys: string[];
+  purgedLocalStorageKeys: string[];
+}> {
+  const purgedLocalStorageKeys: string[] = [];
+
+  // 1. Purge test-specific keys from LocalStorage
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      // Identify test/lab/benchmark keys only
+      if (
+        key.startsWith('formcraft_test_') ||
+        key.startsWith('formcraft_lab_') ||
+        key.startsWith('formcraft_stress_') ||
+        key.startsWith('formcraft_benchmark_') ||
+        key.startsWith('formcraft_diag_') ||
+        key.startsWith('test_') ||
+        key.startsWith('lab_')
+      ) {
+        keysToRemove.push(key);
+      }
+    }
+
+    for (const key of keysToRemove) {
+      localStorage.removeItem(key);
+      purgedLocalStorageKeys.push(key);
+    }
+  } catch (e) {
+    console.warn('LocalStorage test cleanup notice:', e);
+  }
+
+  // 2. Purge test records from IndexedDB
+  const { purgedKeys: purgedIndexedDBKeys } = await clearTestIndexedDBRecords();
+
+  return {
+    purgedIndexedDBKeys,
+    purgedLocalStorageKeys,
   };
 }
 

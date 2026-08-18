@@ -9,6 +9,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { ParsedFormSchema } from '../types';
+import { renderMathToHtml } from '../lib/mathUtils';
 
 interface FormPreviewModalProps {
   isOpen: boolean;
@@ -44,7 +45,7 @@ export const FormPreviewModal: React.FC<FormPreviewModalProps> = ({
           : '';
 
         const descHtml = q.description
-          ? `<div style="font-size: 12px; color: #5f6368; margin-top: 4px; margin-bottom: 12px; line-height: 1.5;">${escapeHtml(
+          ? `<div style="font-size: 12px; color: #5f6368; margin-top: 4px; margin-bottom: 12px; line-height: 1.5;">${renderMathToHtml(
               q.description
             )}</div>`
           : '<div style="margin-bottom: 12px;"></div>';
@@ -55,10 +56,10 @@ export const FormPreviewModal: React.FC<FormPreviewModalProps> = ({
               <div class="section-card-header">
                 <span class="section-tag">✦ SECTION BREAK</span>
               </div>
-              <div class="section-title">${escapeHtml(q.title || 'Untitled Section')}</div>
+              <div class="section-title">${renderMathToHtml(q.title || 'Untitled Section')}</div>
               ${
                 q.description
-                  ? `<div class="section-desc">${escapeHtml(q.description)}</div>`
+                  ? `<div class="section-desc">${renderMathToHtml(q.description)}</div>`
                   : ''
               }
             </div>
@@ -124,7 +125,7 @@ export const FormPreviewModal: React.FC<FormPreviewModalProps> = ({
                     (opt, optIdx) => `
                   <label class="choice-label">
                     <input type="radio" name="field_${index}" value="${escapeHtml(opt)}" class="g-radio" />
-                    <span class="choice-text">${escapeHtml(opt)}</span>
+                    <span class="choice-text">${renderMathToHtml(opt)}</span>
                   </label>
                 `
                   )
@@ -142,7 +143,7 @@ export const FormPreviewModal: React.FC<FormPreviewModalProps> = ({
                     (opt, optIdx) => `
                   <label class="choice-label">
                     <input type="checkbox" name="field_${index}[]" value="${escapeHtml(opt)}" class="g-checkbox" />
-                    <span class="choice-text">${escapeHtml(opt)}</span>
+                    <span class="choice-text">${renderMathToHtml(opt)}</span>
                   </label>
                 `
                   )
@@ -174,7 +175,7 @@ export const FormPreviewModal: React.FC<FormPreviewModalProps> = ({
             }
             inputControlHtml = `
               <div class="scale-wrapper">
-                ${q.scaleLowLabel ? `<span class="scale-label">${escapeHtml(q.scaleLowLabel)}</span>` : ''}
+                ${q.scaleLowLabel ? `<span class="scale-label">${renderMathToHtml(q.scaleLowLabel)}</span>` : ''}
                 <div class="scale-items">
                   ${scalePoints
                     .map(
@@ -187,7 +188,7 @@ export const FormPreviewModal: React.FC<FormPreviewModalProps> = ({
                     )
                     .join('')}
                 </div>
-                ${q.scaleHighLabel ? `<span class="scale-label">${escapeHtml(q.scaleHighLabel)}</span>` : ''}
+                ${q.scaleHighLabel ? `<span class="scale-label">${renderMathToHtml(q.scaleHighLabel)}</span>` : ''}
               </div>
             `;
             break;
@@ -283,7 +284,7 @@ export const FormPreviewModal: React.FC<FormPreviewModalProps> = ({
         return `
           <div class="card question-card" id="q-${escapeHtml(q.id)}">
             <div class="question-header">
-              <span class="question-title">${escapeHtml(q.title || 'Untitled Question')}${requiredBadge}</span>
+              <span class="question-title">${renderMathToHtml(q.title || 'Untitled Question')}${requiredBadge}</span>
             </div>
             ${descHtml}
             ${imagePromptHtml}
@@ -302,6 +303,7 @@ export const FormPreviewModal: React.FC<FormPreviewModalProps> = ({
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Google+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
   <style>
     * {
       box-sizing: border-box;
@@ -351,6 +353,15 @@ export const FormPreviewModal: React.FC<FormPreviewModalProps> = ({
       line-height: 1.6;
       white-space: pre-wrap;
       word-break: break-word;
+    }
+    .katex {
+      font-size: 1.05em;
+      line-height: 1.2;
+    }
+    .katex-display {
+      margin: 0.5em 0;
+      overflow-x: auto;
+      overflow-y: hidden;
     }
     .required-notice {
       color: #d93025;

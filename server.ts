@@ -14,6 +14,21 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
+// CORS & Preflight headers for seamless cloud and Vercel deployments
+app.use((req: Request, res: Response, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-gemini-api-key'
+  );
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204);
+    return;
+  }
+  next();
+});
+
 // Support larger file payloads (PDFs, high-res scans, images)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -42,11 +57,16 @@ app.get('/api/assets/:assetId', (req: Request, res: Response): void => {
   res.send(asset.buffer);
 });
 
-// Gemini client resolver supporting both custom user-supplied API key and server environment key
+// Gemini client resolver supporting both custom user-supplied API key and server environment keys
 let defaultAiClient: GoogleGenAI | null = null;
 
 function getGeminiClient(customApiKey?: string): GoogleGenAI {
-  const apiKey = customApiKey?.trim() || process.env.GEMINI_API_KEY?.trim();
+  const apiKey =
+    customApiKey?.trim() ||
+    process.env.GEMINI_API_KEY?.trim() ||
+    process.env.GOOGLE_API_KEY?.trim() ||
+    process.env.GOOGLE_GENAI_API_KEY?.trim() ||
+    process.env.VITE_GEMINI_API_KEY?.trim();
   if (!apiKey) {
     throw new Error(
       'Gemini API key is missing. Please enter your Google Gemini API key in the API Settings modal (top-right navigation) or configure GEMINI_API_KEY in your environment.'
@@ -334,81 +354,86 @@ app.post('/api/parse-document', async (req: Request, res: Response): Promise<voi
     }
 
     const systemInstruction = `You are an expert Google Forms and assessment questionnaire architect.
-Your task is to analyze documents, scans, images, worksheets, practice sheets, evaluation rubrics, OR client project descriptions, and convert them into clean, unambiguous JSON for the Google Forms API.
+Your core mission is INTELLIGENT DOCUMENT-TO-FORM TRANSFORMATION:
+You analyze input documents (PDFs, Word DOCX, image scans, case studies, assessment materials, training sheets, checklists, evaluation rubrics, or client project descriptions), understand their full semantic context, and transform them into clean, comprehensive, unambiguous JSON for the Google Forms API.
 
-DEFINITIVE IMAGE & ASSET RULES:
-1. IMAGES WITH EMBEDDED TEXT ARE 100% VALID & PRESERVED:
-   - Visual media includes UI screenshots, product packaging photos, flowcharts, technical diagrams, infographics, graphs, charts, maps, advertisements, and visual test exhibits.
-   - It is COMPLETELY NORMAL AND EXPECTED for real visual images to contain printed text, labels, annotations, axis numbers, brand names, or headings.
-   - NEVER discard, omit, or un-link a visual image simply because it contains text!
+CORE INTELLIGENCE & QUESTION GENERATION PRINCIPLES:
+1. UNDERSTAND AND TRANSFORM — NEVER RETURN EMPTY QUESTIONS:
+   - Do NOT simply output the title and omit questions! Your primary duty is to generate a comprehensive, usable form.
+   - For case studies, scenarios, customer reports, or problem statements:
+     * Understand the situation depicted in the text and visual exhibits.
+     * Formulate clear questions testing comprehension, diagnosis, decision-making, or required actions.
+     * Provide relevant, high-quality multiple choice options ('RADIO' or 'CHECKBOX') or open-ended ('SHORT_TEXT' or 'PARAGRAPH') prompts where appropriate.
+   - For exams, quizzes, worksheets, and rubrics:
+     * Extract every question, instruction, option, and checklist item faithfully.
+   - For informational documents, policies, or procedures:
+     * Formulate key verification, acknowledgment, and knowledge-check questions spanning the entire document content.
 
-2. CASE & QUESTION ASSET PAIRING:
-   - When a Case or Question corresponds to a visual exhibit, diagram, or screenshot (e.g. "Case 1", "Case 2", "Case 3", "Case 14", "Examine Figure 1", etc.):
+2. IMAGE & VISUAL ASSET REASONING:
+   - Visual media (UI screenshots, system errors, charts, graphs, flowcharts, packaging photos, diagrams, visual test exhibits) contain vital information.
+   - It is COMPLETELY NORMAL AND EXPECTED for real visual images to contain printed text, labels, annotations, axis numbers, brand names, or headings. NEVER ignore an image because it contains text.
+   - When an image or case study is provided:
+     * Reason about what the image shows in the context of the document.
+     * Generate questions that directly require analyzing, reading, or interpreting the image (e.g. "Identify the issue shown in the screenshot", "What error code is displayed?", "Select the appropriate resolution based on Figure 1").
      * Set "hasImagePrompt": true
-     * Set "assetIds": ["asset_case_X"] or ["asset_page_Y"] matching the provided attachment
-     * Set "imageDescription": Brief caption describing the visual exhibit
-   - If there are multiple cases (e.g. Case 1 to Case 14) and visual attachments are provided for them, EVERY matching Case must be linked with its corresponding asset!
+     * Set "assetIds": ["asset_case_X"] or ["asset_page_Y"] or ["asset_X"] matching the provided attachment
+     * Set "imageDescription": Concise caption describing what the image depicts.
 
-3. PURE TEXT CONTENT DISCRIMINATION:
-   - Standard questionnaire text, evaluation rubrics, scoring criteria, and checkbox items must be extracted directly into structured form fields ("title", "description", "options").
-   - For questions that are purely text-based (no visual graphic/screenshot/diagram attached), set "hasImagePrompt": false, "assetIds": [], and "imageUrl": "".
-
-4. STRICT DOCUMENT FIDELITY & CHECKLIST EXTRACTION:
-   - Extract EVERY single Case, Section, and Question in exact sequence from start to finish (e.g. Case 1, Case 2, Case 3 ... Case 14).
-   - Checkboxes: Any square box (☐, [ ], ■, □, check button) under a case MUST be extracted as an item in the "options" array of a 'CHECKBOX' (multi-select) or 'RADIO' (single-choice) question. Retain the exact wording of every single checkbox option!
+3. STRUCTURED CHECKLISTS, CASES & RUBRIC EXTRACTION:
+   - If the document contains numbered cases (e.g. Case 1, Case 2 ... Case 14), extract EVERY case sequentially without skipping any.
+   - Checkboxes: Any square box (☐, [ ], ■, □, check button) under a case MUST be extracted as an item in the "options" array of a 'CHECKBOX' (multi-select) or 'RADIO' (single-choice) question. Retain the exact wording of every checkbox option!
    - Notes: ${
      includeNotes
-       ? 'Any "Notes: ____" or open response line under a case should be extracted as a \'PARAGRAPH\' question.'
-       : 'Omit blank "Notes: ____" lines so only the Case evaluation criteria and options remain.'
+       ? 'Any "Notes: ____" or open response line should be extracted as a \'PARAGRAPH\' question.'
+       : 'Omit standalone blank "Notes: ____" lines so only substantive questions and evaluation criteria remain.'
    }
-   - Sections: If the document contains case headers (e.g. "Case 1 — Street address", "Case 2 — DulcoSoft"), format as clear Question Titles with their checkbox options.
 
-5. DEFAULT RESPONDENT PROFILE FIELDS (Name, Email, Phone/ID, Date):
+4. RESPONDENT PROFILE FIELDS (Name, Email, Phone/ID, Date):
    - ${
      includeDefaultProfile
        ? 'Prepend Section 1: "Respondent Information" with Full Name, Email Address, Phone Number / Candidate ID, Date of Evaluation.'
-       : 'DO NOT add default respondent profile fields. Follow the document structure strictly without adding unrequested Name, Email, or Phone fields!'
+       : 'DO NOT add unrequested respondent profile fields unless specified in the document.'
    }
 
-6. Strict JSON Schema Requirements:
-   - "title": Exact document or form title.
-   - "description": Instructions and context for respondents.
-   - "questions": Array of question objects:
-     * "id": string (unique identifier)
-     * "title": Concise, unambiguous title (e.g. "Case 1 — Street address", "Case 2 — DulcoSoft", "Upload Resume").
-     * "description": Optional subtitle or instructions.
-     * "type": One of ['SHORT_TEXT', 'PARAGRAPH', 'RADIO', 'CHECKBOX', 'DROP_DOWN', 'SCALE', 'DATE', 'TIME', 'FILE_UPLOAD', 'SECTION_HEADER'].
-     * "required": Boolean (mandatory status).
-     * "options": Array of string options for RADIO, CHECKBOX, or DROP_DOWN.
-     * "acceptedFileTypes": Optional array of allowed file categories for FILE_UPLOAD (e.g. ['PDF', 'DOCUMENT'], ['IMAGE', 'PDF'], ['VIDEO']).
-     * "maxFiles": Optional number of maximum allowed files (e.g. 1, 3, 5).
-     * "maxFileSizeMb": Optional max file size in MB (e.g. 5, 10, 25).
-     * "hasImagePrompt": boolean (true when an actual visual diagram, chart, screenshot, or photo exhibit is associated).
-     * "assetIds": Array of string asset IDs (e.g. ["asset_case_1"]).
-     * "imageDescription": String caption or description of the image.
-     * "validationRule": Optional object with specific validation:
-       - Email: { "type": "EMAIL", "message": "Please provide a valid email address." }
-       - Phone: { "type": "PHONE", "message": "Please provide a valid phone number." }
-       - Link/URL: { "type": "URL", "message": "Please provide a valid website or portfolio link (https://...)." }
-       - Number/Rate: { "type": "NUMBER", "message": "Please enter a valid numeric value." }
-       - File Upload: { "type": "FILE_UPLOAD", "message": "Please upload an accepted file format.", "allowedFileTypes": ["PDF", "DOCUMENT"], "maxFileSizeMb": 10 }
-
-7. FIELD TYPE & VALIDATION RULE INFERENCE RULES:
-   - FILE UPLOAD: When the prompt or document asks to "Upload", "Attach", or submit a "Resume", "CV", "Cover Letter (PDF)", "Screenshot", "ID Proof", "Passport Scan", "Certificate", "Audio", "Video", or "Attachment", assign type "FILE_UPLOAD".
-     * Resume / CV / Documents: acceptedFileTypes = ["PDF", "DOCUMENT"], maxFileSizeMb = 10.
-     * Screenshot / ID Proof / Photo: acceptedFileTypes = ["IMAGE", "PDF"], maxFileSizeMb = 10.
-     * Video Auditions / Media Files: acceptedFileTypes = ["VIDEO"], maxFileSizeMb = 50.
-   - LINKS & URLS: When the prompt or document asks for a "Link", "URL", "LinkedIn", "Portfolio Link", "GitHub Profile", "YouTube Link", or "Vimeo Link", assign type "SHORT_TEXT" and validationRule.type = "URL".
+5. FIELD TYPE & VALIDATION RULE INFERENCE:
+   - FILE UPLOAD: When the document or prompt asks to "Upload", "Attach", or submit a "Resume", "CV", "Cover Letter", "Screenshot", "ID Proof", "Passport Scan", "Certificate", "Audio", "Video", or "Attachment", assign type "FILE_UPLOAD".
+     * Documents/Resumes: acceptedFileTypes = ["PDF", "DOCUMENT"], maxFileSizeMb = 10.
+     * Screenshots/Photos: acceptedFileTypes = ["IMAGE", "PDF"], maxFileSizeMb = 10.
+     * Video/Audio: acceptedFileTypes = ["VIDEO"], maxFileSizeMb = 50.
+   - LINKS & URLS: When asking for a "Link", "URL", "LinkedIn", "Portfolio", "GitHub", assign type "SHORT_TEXT" with validationRule.type = "URL".
    - CONTACT FIELDS: Email questions must have validationRule.type = "EMAIL". Phone number questions must have validationRule.type = "PHONE".
    - NUMERIC FIELDS: Rates, years of experience, or numerical scores must have validationRule.type = "NUMBER".
 
-8. STRICT SEPARATION OF SECTIONS AND QUESTIONS (NO MASHING):
-   - When a document contains distinct section headers, module headers, or page breaks (e.g. 'Section 1: Personal Details', 'Section 2: Technical Assessment', 'Section 3: File Uploads'):
-     * Output a standalone item with "type": "SECTION_HEADER", "title": "Section Title", and "description": "Optional section instructions".
+6. SEPARATION OF SECTIONS AND QUESTIONS:
+   - When a document contains distinct section headers or page breaks (e.g. 'Section 1: Personal Details', 'Section 2: Technical Assessment'):
+     * Output a standalone item with "type": "SECTION_HEADER", "title": "Section Title", and "description": "Optional instructions".
      * Follow it with separate, individual question items for each inquiry.
-     * NEVER mash, combine, or concatenate a Section Header and a Question into a single title or text field!
 
-9. Output ONLY valid JSON matching the schema.`;
+7. MATHEMATICAL, SCIENTIFIC & LATEX NOTATION:
+   - When encountering math equations, calculus, physics, or chemical formulas in questions, descriptions, or options:
+     * Enclose inline formulas with standard dollar signs (e.g., $E = mc^2$, $\\int_0^\\infty e^{-x} dx$, $\\alpha + \\beta$).
+     * Enclose multiline / display math with double dollar signs (e.g., $$\\lim_{x \\to 0} \\frac{\\sin x}{x} = 1$$).
+     * Preserve Greek symbols, exponents, fractions, matrices, and radicals verbatim so they render in KaTeX.
+
+8. STRICT JSON SCHEMA:
+   - "title": Exact document or form title.
+   - "description": Clear instructions and context for respondents.
+   - "questions": Array of question objects:
+     * "id": string (unique identifier like "q_1")
+     * "title": Clear, descriptive question title.
+     * "description": Optional subtitle, context, or scenario details.
+     * "type": One of ['SHORT_TEXT', 'PARAGRAPH', 'RADIO', 'CHECKBOX', 'DROP_DOWN', 'SCALE', 'DATE', 'TIME', 'FILE_UPLOAD', 'SECTION_HEADER'].
+     * "required": Boolean (mandatory status).
+     * "options": Array of string options for RADIO, CHECKBOX, or DROP_DOWN.
+     * "hasImagePrompt": boolean (true when an image, diagram, chart, or screenshot is associated).
+     * "assetIds": Array of string asset IDs (e.g. ["asset_case_1"] or ["asset_1"]).
+     * "imageDescription": String caption or description of the image.
+     * "acceptedFileTypes": Optional array for FILE_UPLOAD (e.g. ['PDF', 'DOCUMENT'], ['IMAGE', 'PDF']).
+     * "maxFiles": Optional number of maximum files (e.g. 1, 3).
+     * "maxFileSizeMb": Optional number (e.g. 10, 25).
+     * "validationRule": Optional object ({ type: "EMAIL" | "PHONE" | "URL" | "NUMBER" | "FILE_UPLOAD", message: string }).
+
+Output ONLY valid JSON matching this schema.`;
 
     let userPrompt = '';
 
@@ -433,9 +458,11 @@ Configuration & Specific Inquiries to Include:
 
 Please construct a comprehensive, beautifully structured Google Form with clear section headers, professional wording, and practical test questions where requested.`;
     } else {
-      userPrompt = `Extract ALL cases, questions, checkboxes, options, notes, and sections from this document${
+      userPrompt = `Carefully analyze the contents of this document${
         fileName ? ` (${fileName})` : ''
-      } without skipping any cases or options.`;
+      }, including all text, headings, case studies, scenarios, instructions, questions, checkboxes, tables, and visual image attachments.
+Understand the full context and intelligently generate a complete, structured Google Form with meaningful questions covering every topic, case study, and visual exhibit.
+Do NOT return an empty questions list. Extract or formulate high-quality questions and options for every case, topic, and scenario present.`;
       if (includeDefaultProfile) {
         userPrompt += `\nInclude standard Respondent Information fields (Full Name, Email Address, Phone/Candidate ID, Date) at the beginning.`;
       }
@@ -470,7 +497,7 @@ Please construct a comprehensive, beautifully structured Google Form with clear 
       }
     }
 
-    // Precise Asset Association: Only link genuine visual images when explicitly matched
+    // Precise Asset Association: link genuine visual images when matched by ID, Case number, Section, or Context
     let sanitizedQuestions = Array.isArray(parsedData.questions)
       ? parsedData.questions.map((q: any, idx: number) => {
           let questionAssetIds: string[] = Array.isArray(q.assetIds) ? q.assetIds.map(String) : [];
@@ -487,7 +514,9 @@ Please construct a comprehensive, beautifully structured Google Form with clear 
           // 2. Heading / Section / Case match if an asset exists for this case
           if (!matchedDataUrl && currentAssets.length > 0) {
             const titleLower = String(q.title || '').toLowerCase();
-            const caseNumMatch = titleLower.match(/case\s+(\d+)/i);
+            const descLower = String(q.description || '').toLowerCase();
+            const caseNumMatch = titleLower.match(/case\s+(\d+)/i) || descLower.match(/case\s+(\d+)/i);
+            const figNumMatch = titleLower.match(/figure\s+(\d+)|fig\.\s*(\d+)|diagram\s+(\d+)|screenshot\s+(\d+)/i);
             
             if (caseNumMatch) {
               const caseNum = caseNumMatch[1];
@@ -505,10 +534,30 @@ Please construct a comprehensive, beautifully structured Google Form with clear 
                 questionAssetIds = [matchingAsset.assetId];
                 matchedDataUrl = matchingAsset.dataUrl;
               }
+            } else if (figNumMatch) {
+              const figNum = figNumMatch[1] || figNumMatch[2] || figNumMatch[3] || figNumMatch[4];
+              const matchingAsset = currentAssets.find((a) => {
+                const secLower = (a.associatedSection || '').toLowerCase();
+                const idLower = (a.assetId || '').toLowerCase();
+                return secLower.includes(figNum) || idLower.includes(figNum);
+              });
+              if (matchingAsset) {
+                questionAssetIds = [matchingAsset.assetId];
+                matchedDataUrl = matchingAsset.dataUrl;
+              }
             }
           }
 
-          // 3. Single direct image upload fallback
+          // 3. Fallback to asset by index if question explicitly requests image prompt
+          if (!matchedDataUrl && currentAssets.length > 0 && (q.hasImagePrompt || q.imageUrl)) {
+            const assetForIdx = currentAssets[idx] || currentAssets[0];
+            if (assetForIdx) {
+              questionAssetIds = [assetForIdx.assetId];
+              matchedDataUrl = assetForIdx.dataUrl;
+            }
+          }
+
+          // 4. Single direct image upload fallback
           if (!matchedDataUrl && isDirectImage && currentAssets.length === 1 && idx === 0) {
             questionAssetIds = [currentAssets[0].assetId];
             matchedDataUrl = currentAssets[0].dataUrl;
@@ -619,6 +668,66 @@ Please construct a comprehensive, beautifully structured Google Form with clear 
       sanitizedQuestions = sanitizedQuestions.filter(
         (q: any) => !/notes?|observations?|comments?/i.test(q.title) || q.type !== 'PARAGRAPH'
       );
+    }
+
+    // Question Safeguard & Recovery: If questions array is unexpectedly empty but document content/assets exist
+    if (sanitizedQuestions.length === 0 && (currentAssets.length > 0 || (extractedDocText && extractedDocText.trim().length > 20))) {
+      console.warn('[Question Recovery] No questions parsed in primary pass. Generating structured questions from document content and assets...');
+      
+      // Generate questions for all extracted assets (e.g. case studies, screenshots, diagrams)
+      if (currentAssets.length > 0) {
+        currentAssets.forEach((asset, idx) => {
+          const caseName = asset.associatedSection || `Case ${idx + 1}`;
+          sanitizedQuestions.push({
+            id: `q_rec_${Date.now()}_${idx}`,
+            title: `${caseName} — Assessment & Issue Identification`,
+            description: `Review the visual exhibit (${caseName}) and select or describe the appropriate diagnosis/action.`,
+            type: 'CHECKBOX',
+            required: true,
+            options: [
+              'Correct / Compliant as presented',
+              'Defect / Error identified in exhibit',
+              'Requires manual review or correction',
+              'Unresolved issue / Escalation needed',
+            ],
+            scaleLow: 1,
+            scaleHigh: 5,
+            scaleLowLabel: '',
+            scaleHighLabel: '',
+            hasImagePrompt: true,
+            imageUrl: asset.dataUrl,
+            imageDescription: asset.description || `Visual exhibit for ${caseName}`,
+            assetIds: [asset.assetId],
+          });
+        });
+      }
+
+      // If still empty and text exists, synthesize general questions from text content
+      if (sanitizedQuestions.length === 0 && extractedDocText) {
+        const textLines = extractedDocText.split('\n').map((l) => l.trim()).filter(Boolean);
+        const headingCandidates = textLines.filter((l) => l.length < 80 && !l.startsWith('---'));
+        
+        if (headingCandidates.length > 0) {
+          headingCandidates.slice(0, 8).forEach((heading, hIdx) => {
+            sanitizedQuestions.push({
+              id: `q_rec_text_${Date.now()}_${hIdx}`,
+              title: heading,
+              description: `Provide your assessment or response for: ${heading}`,
+              type: 'SHORT_TEXT',
+              required: false,
+              options: [],
+              scaleLow: 1,
+              scaleHigh: 5,
+              scaleLowLabel: '',
+              scaleHighLabel: '',
+              hasImagePrompt: false,
+              imageUrl: '',
+              imageDescription: '',
+              assetIds: [],
+            });
+          });
+        }
+      }
     }
 
     const finalTitle =
@@ -1344,7 +1453,7 @@ async function setupApp() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (!process.env.VERCEL) {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
@@ -1352,9 +1461,14 @@ async function setupApp() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Doc-to-Google-Form server running on http://0.0.0.0:${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Doc-to-Google-Form server running on http://0.0.0.0:${PORT}`);
+    });
+  }
 }
 
 setupApp();
+
+export { app };
+export default app;

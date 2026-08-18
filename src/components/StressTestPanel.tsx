@@ -29,7 +29,9 @@ import {
   Sparkles,
   ArrowRight,
   Zap,
+  FileText,
 } from 'lucide-react';
+import { MathRenderer } from './MathRenderer';
 
 interface StressTestPanelProps {
   customApiKey?: string;
@@ -199,7 +201,6 @@ export const StressTestPanel: React.FC<StressTestPanelProps> = ({
     }
   };
 
-  // Run all 7 lab variations sequentially
   const handleRunAllLabVariations = async () => {
     setIsRunning(true);
     for (const variation of LAB_VARIATION_DOCS) {
@@ -388,93 +389,106 @@ export const StressTestPanel: React.FC<StressTestPanelProps> = ({
 
         {/* View Switcher Tabs & Actions */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold">
+          <div
+            role="tablist"
+            aria-label="Stress test lab view modes"
+            className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold"
+          >
             <button
+              id="tab-lab"
               type="button"
+              role="tab"
+              aria-selected={currentView === 'LAB'}
+              aria-controls="panel-lab"
               onClick={() => setCurrentView('LAB')}
-              className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-hidden ${
                 currentView === 'LAB'
                   ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Interactive Lab (7 Docs)</span>
+              <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Real-World Test Pack ({LAB_VARIATION_DOCS.length} Scenarios)</span>
             </button>
+
             <button
+              id="tab-tests"
               type="button"
+              role="tab"
+              aria-selected={currentView === 'TESTS'}
+              aria-controls="panel-tests"
               onClick={() => setCurrentView('TESTS')}
-              className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+              className={`px-3.5 py-2 rounded-xl transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-hidden ${
                 currentView === 'TESTS'
                   ? 'bg-white text-indigo-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
               Category Tests ({executedCount})
             </button>
+
             <button
+              id="tab-matrix"
               type="button"
+              role="tab"
+              aria-selected={currentView === 'MATRIX'}
+              aria-controls="panel-matrix"
               onClick={() => setCurrentView('MATRIX')}
-              className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+              className={`px-3.5 py-2 rounded-xl transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-hidden ${
                 currentView === 'MATRIX'
                   ? 'bg-white text-indigo-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
               Capability Matrix
             </button>
+
             <button
+              id="tab-storage"
               type="button"
+              role="tab"
+              aria-selected={currentView === 'STORAGE_AUDIT'}
+              aria-controls="panel-storage"
               onClick={handleAuditStorage}
-              className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+              className={`px-3.5 py-2 rounded-xl transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-hidden ${
                 currentView === 'STORAGE_AUDIT'
                   ? 'bg-white text-indigo-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
               Storage Audit
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={handleDownloadImplementationMd}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold border border-slate-300 transition-colors cursor-pointer"
-            title="Download implementation.md markdown report"
-          >
-            <Download className="w-3.5 h-3.5 text-indigo-600" />
-            <span>implementation.md</span>
-          </button>
-
           {onClose && (
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 rounded-xl bg-slate-200 text-slate-700 hover:bg-slate-300 text-xs font-bold cursor-pointer"
-              title="Close Panel"
+              aria-label="Close Stress Testing Lab panel"
+              className="px-3.5 py-2 rounded-xl bg-slate-200 text-slate-700 hover:bg-slate-300 text-xs font-bold cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-hidden transition-colors"
             >
-              &times; Close
+              &times; Close Lab
             </button>
           )}
         </div>
       </div>
 
-      {/* VIEW: INTERACTIVE LAB (7 VARIATION DOCS) */}
+      {/* VIEW: INTERACTIVE LAB (REAL-WORLD TEST PACK) */}
       {currentView === 'LAB' && (
-        <div className="space-y-6">
+        <div id="panel-lab" role="tabpanel" aria-labelledby="tab-lab" className="space-y-6">
           {/* Lab Action Bar */}
           <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-md">
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-extrabold text-base sm:text-lg">
-                  7 Document Variations Test Suite
+                  Real-World Test Pack &amp; Diagnostics Suite
                 </h3>
                 <span className="bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded-md text-xs font-semibold border border-indigo-400/30">
-                  Zero-Drift &amp; Visual Verification
+                  {LAB_VARIATION_DOCS.length} Scenarios &bull; Zero-Drift
                 </span>
               </div>
               <p className="text-xs text-indigo-200 mt-1 max-w-2xl">
-                Test each document variation with 1-click. Directly capture live extraction, inspect image exhibits, verify zero drift, or auto-load into the Studio canvas.
+                Test real-world scenarios with 1-click. Captures live extraction, evaluates complex LaTeX math equations, inspects zero-drift image bindings, validates SOC2/GDPR compliance forms, or auto-loads directly into Studio.
               </p>
             </div>
 
@@ -483,19 +497,21 @@ export const StressTestPanel: React.FC<StressTestPanelProps> = ({
                 type="button"
                 onClick={handleRunAllLabVariations}
                 disabled={isRunning}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-extrabold shadow-lg disabled:opacity-50 transition-all cursor-pointer"
+                aria-label="Run all real-world test pack variations"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-extrabold shadow-lg disabled:opacity-50 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:outline-hidden"
               >
-                {isRunning ? <Clock className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-current" />}
-                <span>Run All 7 Variations</span>
+                {isRunning ? <Clock className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Play className="w-4 h-4 fill-current" aria-hidden="true" />}
+                <span>Run All {LAB_VARIATION_DOCS.length} Scenarios</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleClearResults}
                 disabled={labExecutedCount === 0}
-                className="inline-flex items-center gap-1 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold disabled:opacity-30 transition-all cursor-pointer"
+                aria-label="Reset lab results"
+                className="inline-flex items-center gap-1 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold disabled:opacity-30 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-hidden"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
+                <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
                 <span>Reset</span>
               </button>
             </div>
@@ -536,7 +552,9 @@ export const StressTestPanel: React.FC<StressTestPanelProps> = ({
                       <h4 className="font-extrabold text-slate-900 text-base sm:text-lg pt-1">
                         {doc.name}
                       </h4>
-                      <p className="text-xs text-slate-600">{doc.description}</p>
+                      <div className="text-xs text-slate-600">
+                        <MathRenderer text={doc.description} />
+                      </div>
                     </div>
 
                     {/* Action Buttons */}
@@ -587,8 +605,8 @@ export const StressTestPanel: React.FC<StressTestPanelProps> = ({
                           key={fIdx}
                           className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg"
                         >
-                          <CheckCircle2 className="w-3 h-3 text-indigo-600" />
-                          {feat}
+                          <CheckCircle2 className="w-3 h-3 text-indigo-600 shrink-0" />
+                          <MathRenderer text={feat} />
                         </span>
                       ))}
                     </div>
