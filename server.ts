@@ -2,7 +2,6 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import mammoth from 'mammoth';
 import { parseDocxWithImageFidelity } from './src/lib/parser';
@@ -173,7 +172,17 @@ app.post('/api/parse-document', async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const ai = getGeminiClient(customKey);
+    let ai: GoogleGenAI;
+    try {
+      ai = getGeminiClient(customKey);
+    } catch (keyErr: any) {
+      res.status(401).json({
+        success: false,
+        error: keyErr.message || 'Gemini API key is required. Please set GEMINI_API_KEY or enter your key in API Settings.',
+        code: 'MISSING_API_KEY',
+      });
+      return;
+    }
 
     let extractedDocText = textContent || '';
     const currentAssets: Asset[] = [];
@@ -758,9 +767,27 @@ Do NOT return an empty questions list. Extract or formulate high-quality questio
     res.json({ success: true, data: finalSchema });
   } catch (error: any) {
     console.error('Document parsing error:', error);
-    res.status(500).json({
+
+    const errorMessage = String(error?.message || error || '');
+    const isRateLimit = /429|resource_exhausted|quota|high demand/i.test(errorMessage);
+    const isAuthError = /401|403|unauthenticated|permission_denied|api_key_invalid/i.test(errorMessage);
+    const isPayloadTooLarge = /413|payload too large|entity too large|request entity/i.test(errorMessage);
+    const isTimeout = /504|timeout|deadline_exceeded/i.test(errorMessage);
+
+    const statusCode = isRateLimit
+      ? 429
+      : isAuthError
+      ? 401
+      : isPayloadTooLarge
+      ? 413
+      : isTimeout
+      ? 504
+      : 500;
+
+    res.status(statusCode).json({
       success: false,
-      error: error.message || 'Failed to process document with Gemini AI.',
+      error: errorMessage || 'Failed to process document with Gemini AI.',
+      code: isRateLimit ? 'RATE_LIMIT' : isAuthError ? 'AUTH_ERROR' : isPayloadTooLarge ? 'PAYLOAD_TOO_LARGE' : 'PROCESSING_ERROR',
     });
   }
 });
@@ -1447,21 +1474,30 @@ app.get('/api/sheets/fetch', async (req: Request, res: Response): Promise<void> 
 
 // Vite middleware & production static serving setup
 async function setupApp() {
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else if (!process.env.VERCEL) {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
+  const isVercelOrLambda = Boolean(
+    process.env.VERCEL || process.env.NOW_REGION || process.env.AWS_LAMBDA_FUNCTION_NAME
+  );
 
-  if (!process.env.VERCEL) {
+  if (!isVercelOrLambda) {
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const { createServer: createViteServer } = await import('vite');
+        const vite = await createViteServer({
+          server: { middlewareMode: true },
+          appType: 'spa',
+        });
+        app.use(vite.middlewares);
+      } catch (e) {
+        console.warn('Vite dev server middleware initialization notice:', e);
+      }
+    } else {
+      const distPath = path.join(process.cwd(), 'dist');
+      app.use(express.static(distPath));
+      app.get('*', (_req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+    }
+
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Doc-to-Google-Form server running on http://0.0.0.0:${PORT}`);
     });

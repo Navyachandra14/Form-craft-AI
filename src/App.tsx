@@ -14,6 +14,8 @@ import { HelpGuide } from './components/HelpGuide';
 import { WelcomeTour } from './components/WelcomeTour';
 import { StressTestPanel } from './components/StressTestPanel';
 import { SmartTemplate } from './components/SampleDocs';
+import { parseDocumentDirectClient } from './lib/clientGeminiParser';
+import { NetworkStatusIndicator } from './components/NetworkStatus';
 import {
   ParsedFormSchema,
   CreateFormResponse,
@@ -300,20 +302,55 @@ export default function App() {
       }
 
       if (!response.ok || !data?.success) {
+        // If server failed (e.g. 500, 504, 404) and client API key is available, run direct client-side fallback
+        const effectiveKey = customApiKey.trim() || ((import.meta as any).env?.VITE_GEMINI_API_KEY as string)?.trim();
+        if (effectiveKey && (response.status >= 500 || response.status === 404 || response.status === 401)) {
+          console.info('[Server Notice] Server returned status', response.status, '- Running direct client Gemini fallback...');
+          try {
+            const fallbackSchema = await parseDocumentDirectClient({
+              fileBase64: payload.fileBase64,
+              mimeType: payload.mimeType,
+              fileName: payload.fileName,
+              textContent: payload.textContent,
+              includeDefaultProfile: payload.includeDefaultProfile,
+              includeNotes: payload.includeNotes,
+              extractionMode: payload.extractionMode,
+              extractedAssets: payload.extractedAssets,
+              apiKey: effectiveKey,
+            });
+
+            setParsedSchema(fallbackSchema);
+            setStep('preview');
+            try {
+              saveHistoryItem({
+                schema: fallbackSchema,
+                sourceDocName: currentFileName || payload.fileName,
+              });
+            } catch (histErr) {
+              console.warn('History initial save notice:', histErr);
+            }
+            return;
+          } catch (fallbackErr: any) {
+            console.warn('Direct client fallback notice:', fallbackErr);
+          }
+        }
+
         const isHtml = rawText && rawText.trim().startsWith('<');
         const errMessage =
           data?.error ||
           (response.status === 413
             ? 'The uploaded file payload is too large. Please use a smaller file or copy-paste the text content.'
+            : response.status === 401
+            ? 'Gemini API key is required or invalid. Please configure your key in API Settings (top right).'
             : response.status === 429
             ? 'Rate limit reached on public Gemini pool. Please retry in a few moments or enter your Gemini API key in API Settings.'
             : response.status === 504
-            ? 'Document processing timed out on the server (504). Please retry or provide a dedicated Gemini API key.'
+            ? 'Document processing timed out on the server (504). Please retry or enter a dedicated Gemini API key in API Settings.'
             : response.status === 404
-            ? 'Document parsing endpoint not found (404). Please ensure the backend server or serverless route is active.'
+            ? 'Document parsing endpoint not found (404). Running direct client fallback.'
             : isHtml
-            ? `Server responded with status ${response.status} (non-JSON). Please retry or check server routes.`
-            : `Server processing notice (${response.status}). Please try again.`);
+            ? `Server responded with status ${response.status}. Please enter your Gemini API key in API Settings to connect directly.`
+            : `Server processing error (${response.status}): ${data?.error || 'Please retry or verify API key in Settings.'}`);
         throw new Error(errMessage);
       }
 
@@ -726,7 +763,9 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-slate-200/80 bg-white py-5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
-          <div className="flex items-center gap-3 font-medium">
+          <div className="flex flex-wrap items-center gap-3 font-medium">
+            <NetworkStatusIndicator isGenerating={step === 'parsing' || step === 'generating'} />
+            <span className="text-slate-300">•</span>
             <div className="flex items-center gap-1.5">
               <div className="w-2 h-2 rounded-full bg-emerald-500" />
               <span>Google Forms API &amp; Gemini 2.5 Flash Connected</span>
