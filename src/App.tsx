@@ -15,6 +15,13 @@ import { WelcomeTour } from './components/WelcomeTour';
 import { StressTestPanel } from './components/StressTestPanel';
 import { SmartTemplate } from './components/SampleDocs';
 import { parseDocumentDirectClient } from './lib/clientGeminiParser';
+import {
+  parseDocumentDirectOpenRouter,
+  DEFAULT_OPENROUTER_MODEL,
+  STORAGE_KEY_OPENROUTER,
+  STORAGE_KEY_OPENROUTER_MODEL,
+  STORAGE_KEY_AI_PROVIDER,
+} from './lib/openrouter';
 import { NetworkStatusIndicator } from './components/NetworkStatus';
 import {
   ParsedFormSchema,
@@ -46,7 +53,7 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [restoredDraftInfo, setRestoredDraftInfo] = useState<string | null>(null);
 
-  // Gemini API key state & modal management
+  // API key state & provider management
   const [customApiKey, setCustomApiKey] = useState<string>(() => {
     try {
       return localStorage.getItem(STORAGE_KEY_GEMINI) || '';
@@ -54,7 +61,33 @@ export default function App() {
       return '';
     }
   });
+
+  const [openRouterKey, setOpenRouterKey] = useState<string>(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY_OPENROUTER) || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const [openRouterModel, setOpenRouterModel] = useState<string>(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY_OPENROUTER_MODEL) || DEFAULT_OPENROUTER_MODEL;
+    } catch {
+      return DEFAULT_OPENROUTER_MODEL;
+    }
+  });
+
+  const [activeProvider, setActiveProvider] = useState<'openrouter' | 'gemini' | 'auto'>(() => {
+    try {
+      return (localStorage.getItem(STORAGE_KEY_AI_PROVIDER) as any) || 'openrouter';
+    } catch {
+      return 'openrouter';
+    }
+  });
+
   const [hasEnvKey, setHasEnvKey] = useState<boolean>(true);
+  const [hasOpenRouterEnvKey, setHasOpenRouterEnvKey] = useState<boolean>(false);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isHelpGuideOpen, setIsHelpGuideOpen] = useState(false);
@@ -129,17 +162,18 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [parsedSchema, currentFileName]);
 
-  // Fetch backend Gemini configuration state
+  // Fetch backend API configuration state
   useEffect(() => {
     fetch('/api/gemini-config-status')
       .then((res) => res.json())
       .then((data) => {
-        if (data && typeof data.hasEnvKey === 'boolean') {
-          setHasEnvKey(data.hasEnvKey);
+        if (data) {
+          if (typeof data.hasEnvKey === 'boolean') setHasEnvKey(data.hasEnvKey);
+          if (typeof data.hasOpenRouterEnvKey === 'boolean') setHasOpenRouterEnvKey(data.hasOpenRouterEnvKey);
         }
       })
       .catch(() => {
-        // Fallback assuming default is active
+        // Fallback
       });
   }, []);
 
@@ -153,6 +187,30 @@ export default function App() {
       }
     } catch (e) {
       console.warn('Failed to save API key to localStorage', e);
+    }
+  };
+
+  const handleSaveOpenRouterKey = (key: string, model: string = DEFAULT_OPENROUTER_MODEL) => {
+    setOpenRouterKey(key);
+    setOpenRouterModel(model);
+    try {
+      if (key) {
+        localStorage.setItem(STORAGE_KEY_OPENROUTER, key);
+        localStorage.setItem(STORAGE_KEY_OPENROUTER_MODEL, model);
+      } else {
+        localStorage.removeItem(STORAGE_KEY_OPENROUTER);
+      }
+    } catch (e) {
+      console.warn('Failed to save OpenRouter key to localStorage', e);
+    }
+  };
+
+  const handleSaveActiveProvider = (provider: 'openrouter' | 'gemini' | 'auto') => {
+    setActiveProvider(provider);
+    try {
+      localStorage.setItem(STORAGE_KEY_AI_PROVIDER, provider);
+    } catch (e) {
+      console.warn('Failed to save AI provider choice', e);
     }
   };
 
@@ -249,8 +307,16 @@ export default function App() {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
-      if (customApiKey.trim()) {
-        headers['x-gemini-api-key'] = customApiKey.trim();
+
+      const cleanOrKey = openRouterKey.trim();
+      const cleanGeminiKey = customApiKey.trim();
+
+      if (cleanOrKey) {
+        headers['x-openrouter-api-key'] = cleanOrKey;
+        headers['x-openrouter-model'] = openRouterModel || DEFAULT_OPENROUTER_MODEL;
+      }
+      if (cleanGeminiKey) {
+        headers['x-gemini-api-key'] = cleanGeminiKey;
       }
 
       // Optimize payload: For text-only PDFs without visual assets, avoid sending redundant raw PDF binary
@@ -275,15 +341,44 @@ export default function App() {
           signal: controller.signal,
           body: JSON.stringify({
             ...payloadToSend,
-            userApiKey: customApiKey.trim() || undefined,
+            userApiKey: cleanGeminiKey || undefined,
+            openRouterApiKey: cleanOrKey || undefined,
+            openRouterModel: openRouterModel || DEFAULT_OPENROUTER_MODEL,
           }),
         });
       } catch (fetchErr: any) {
         if (fetchErr.name === 'AbortError') {
           throw new Error(
-            'Document processing timed out after 3 minutes. Please click "Retry Processing" or enter a dedicated Gemini API key in API Settings.'
+            'Document processing timed out after 3 minutes. Please click "Retry Processing" or configure an OpenRouter API key in API Settings.'
           );
         }
+
+        // Direct browser fallback if backend server is unreachable
+        if (cleanOrKey) {
+          console.info('Backend unreachable, executing direct OpenRouter client parsing...');
+          const orSchema = await parseDocumentDirectOpenRouter({
+            fileBase64: payload.fileBase64,
+            mimeType: payload.mimeType,
+            fileName: payload.fileName,
+            textContent: payload.textContent,
+            includeDefaultProfile: payload.includeDefaultProfile,
+            includeNotes: payload.includeNotes,
+            extractionMode: payload.extractionMode,
+            extractedAssets: payload.extractedAssets,
+            apiKey: cleanOrKey,
+            model: openRouterModel,
+          });
+          setParsedSchema(orSchema);
+          setStep('preview');
+          try {
+            saveHistoryItem({
+              schema: orSchema,
+              sourceDocName: currentFileName || payload.fileName,
+            });
+          } catch {}
+          return;
+        }
+
         const netMsg = fetchErr.message ? ` (${fetchErr.message})` : '';
         throw new Error(
           `Unable to connect to the document parsing service${netMsg}. Please check your internet connection or verify your API key in Settings.`
@@ -302,10 +397,39 @@ export default function App() {
       }
 
       if (!response.ok || !data?.success) {
-        // If server failed (e.g. 500, 504, 404) and client API key is available, run direct client-side fallback
-        const effectiveKey = customApiKey.trim() || ((import.meta as any).env?.VITE_GEMINI_API_KEY as string)?.trim();
-        if (effectiveKey && (response.status >= 500 || response.status === 404 || response.status === 401)) {
-          console.info('[Server Notice] Server returned status', response.status, '- Running direct client Gemini fallback...');
+        // Fallback pass 1: Try client-side OpenRouter if key is available
+        if (cleanOrKey) {
+          console.info('[Notice] Server returned status', response.status, '- Running direct OpenRouter fallback...');
+          try {
+            const orSchema = await parseDocumentDirectOpenRouter({
+              fileBase64: payload.fileBase64,
+              mimeType: payload.mimeType,
+              fileName: payload.fileName,
+              textContent: payload.textContent,
+              includeDefaultProfile: payload.includeDefaultProfile,
+              includeNotes: payload.includeNotes,
+              extractionMode: payload.extractionMode,
+              extractedAssets: payload.extractedAssets,
+              apiKey: cleanOrKey,
+              model: openRouterModel,
+            });
+            setParsedSchema(orSchema);
+            setStep('preview');
+            try {
+              saveHistoryItem({
+                schema: orSchema,
+                sourceDocName: currentFileName || payload.fileName,
+              });
+            } catch {}
+            return;
+          } catch (orFallbackErr: any) {
+            console.warn('Direct OpenRouter fallback error:', orFallbackErr);
+          }
+        }
+
+        // Fallback pass 2: Try client-side Gemini if key is available
+        if (cleanGeminiKey) {
+          console.info('[Notice] Server returned status', response.status, '- Running direct client Gemini fallback...');
           try {
             const fallbackSchema = await parseDocumentDirectClient({
               fileBase64: payload.fileBase64,
@@ -316,7 +440,7 @@ export default function App() {
               includeNotes: payload.includeNotes,
               extractionMode: payload.extractionMode,
               extractedAssets: payload.extractedAssets,
-              apiKey: effectiveKey,
+              apiKey: cleanGeminiKey,
             });
 
             setParsedSchema(fallbackSchema);
@@ -330,8 +454,8 @@ export default function App() {
               console.warn('History initial save notice:', histErr);
             }
             return;
-          } catch (fallbackErr: any) {
-            console.warn('Direct client fallback notice:', fallbackErr);
+          } catch (gemFallbackErr: any) {
+            console.warn('Direct client fallback notice:', gemFallbackErr);
           }
         }
 
@@ -341,16 +465,14 @@ export default function App() {
           (response.status === 413
             ? 'The uploaded file payload is too large. Please use a smaller file or copy-paste the text content.'
             : response.status === 401
-            ? 'Gemini API key is required or invalid. Please configure your key in API Settings (top right).'
+            ? 'AI API key is required. Please configure your OpenRouter API key or Gemini API key in API Settings (top right).'
             : response.status === 429
-            ? 'Rate limit reached on public Gemini pool. Please retry in a few moments or enter your Gemini API key in API Settings.'
+            ? 'Rate limit reached. Please retry in a few moments or enter your own OpenRouter API key in API Settings.'
             : response.status === 504
-            ? 'Document processing timed out on the server (504). Please retry or enter a dedicated Gemini API key in API Settings.'
-            : response.status === 404
-            ? 'Document parsing endpoint not found (404). Running direct client fallback.'
+            ? 'Document processing timed out on the server (504). Please retry or configure your OpenRouter API key in API Settings.'
             : isHtml
-            ? `Server responded with status ${response.status}. Please enter your Gemini API key in API Settings to connect directly.`
-            : `Server processing error (${response.status}): ${data?.error || 'Please retry or verify API key in Settings.'}`);
+            ? `Server responded with status ${response.status}. Please enter your OpenRouter or Gemini API key in API Settings to connect directly.`
+            : `Processing error (${response.status}): ${data?.error || 'Please retry or verify your API key in Settings.'}`);
         throw new Error(errMessage);
       }
 
@@ -566,6 +688,13 @@ export default function App() {
     setErrorMessage(null);
   };
 
+  const hasAnyKeyConfigured = Boolean(openRouterKey.trim() || customApiKey.trim());
+  const activeProviderName = openRouterKey.trim()
+    ? `OpenRouter: ${openRouterModel.split('/').pop() || 'Flash'}`
+    : customApiKey.trim()
+    ? 'Gemini 2.5 Flash'
+    : 'OpenRouter / Gemini';
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans antialiased selection:bg-emerald-100 selection:text-emerald-900">
       {/* Header Navigation */}
@@ -577,7 +706,8 @@ export default function App() {
         hasActiveWorkflow={step !== 'idle'}
         isLoggingIn={isLoggingIn}
         onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
-        apiKeyConfigured={Boolean(customApiKey.trim())}
+        apiKeyConfigured={hasAnyKeyConfigured}
+        activeProviderName={activeProviderName}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenHelpGuide={() => setIsHelpGuideOpen(true)}
       />
@@ -809,13 +939,19 @@ export default function App() {
         onOpenHelpGuide={() => setIsHelpGuideOpen(true)}
       />
 
-      {/* Gemini API Key Configuration Modal */}
+      {/* AI & BYOK API Key Configuration Modal */}
       <ApiKeyModal
         isOpen={isApiKeyModalOpen}
         onClose={() => setIsApiKeyModalOpen(false)}
         apiKey={customApiKey}
         onSaveKey={handleSaveApiKey}
+        openRouterKey={openRouterKey}
+        onSaveOpenRouterKey={handleSaveOpenRouterKey}
+        openRouterModel={openRouterModel}
+        activeProvider={activeProvider}
+        onSaveActiveProvider={handleSaveActiveProvider}
         hasEnvKey={hasEnvKey}
+        hasOpenRouterEnvKey={hasOpenRouterEnvKey}
       />
 
       {/* Previous Forms & Work History Modal */}

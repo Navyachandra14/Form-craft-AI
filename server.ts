@@ -80,13 +80,77 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Check whether a default Gemini API key is configured on server
+// Check whether a default Gemini or OpenRouter API key is configured on server
 app.get('/api/gemini-config-status', (_req: Request, res: Response) => {
   const hasEnvKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim().length > 5);
+  const hasOpenRouterEnvKey = Boolean(
+    process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY.trim().length > 5
+  );
   res.json({
     hasEnvKey,
-    requiresUserKey: !hasEnvKey,
+    hasOpenRouterEnvKey,
+    requiresUserKey: !hasEnvKey && !hasOpenRouterEnvKey,
   });
+});
+
+// Validate OpenRouter API key
+app.post('/api/validate-openrouter-key', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const rawKey =
+      (req.headers['x-openrouter-api-key'] as string) ||
+      req.body.apiKey ||
+      process.env.OPENROUTER_API_KEY;
+    const cleanKey = rawKey?.trim();
+    const model = req.body.model || 'google/gemini-2.5-flash';
+
+    if (!cleanKey) {
+      res.status(400).json({
+        success: false,
+        valid: false,
+        error: 'OpenRouter API key is missing. Please enter your key (sk-or-v1-...).',
+      });
+      return;
+    }
+
+    const testRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${cleanKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://formcraft.ai',
+        'X-Title': 'FormCraft AI',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: 'Ping test. Reply with "pong".' }],
+        max_tokens: 10,
+      }),
+    });
+
+    if (testRes.ok) {
+      res.json({
+        success: true,
+        valid: true,
+        message: `OpenRouter API key verified successfully! Active connection established via ${model}.`,
+      });
+      return;
+    }
+
+    const errData = await testRes.json().catch(() => ({}));
+    const errMsg = errData.error?.message || `OpenRouter returned status ${testRes.status}`;
+    res.status(400).json({
+      success: false,
+      valid: false,
+      error: errMsg,
+    });
+  } catch (error: any) {
+    console.error('OpenRouter key validation error:', error);
+    res.status(400).json({
+      success: false,
+      valid: false,
+      error: error.message || 'Unable to connect to OpenRouter with this API key.',
+    });
+  }
 });
 
 // Validate user's Gemini API key
@@ -144,6 +208,18 @@ app.post('/api/parse-document', async (req: Request, res: Response): Promise<voi
     }
     
     const customHeaderKey = req.headers['x-gemini-api-key'] as string | undefined;
+    const customOpenRouterKey =
+      (req.headers['x-openrouter-api-key'] as string) ||
+      req.body.openRouterApiKey ||
+      (customHeaderKey && customHeaderKey.startsWith('sk-or-') ? customHeaderKey : undefined) ||
+      (userApiKey && userApiKey.startsWith('sk-or-') ? userApiKey : undefined) ||
+      process.env.OPENROUTER_API_KEY;
+    const openRouterModel =
+      (req.headers['x-openrouter-model'] as string) ||
+      req.body.openRouterModel ||
+      process.env.OPENROUTER_MODEL ||
+      'google/gemini-2.5-flash';
+
     const customKey = customHeaderKey || userApiKey;
 
     if (!fileBase64 && !textContent && !briefConfig) {
@@ -151,16 +227,20 @@ app.post('/api/parse-document', async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    let ai: GoogleGenAI;
-    try {
-      ai = getGeminiClient(customKey);
-    } catch (keyErr: any) {
-      res.status(401).json({
-        success: false,
-        error: keyErr.message || 'Gemini API key is required. Please set GEMINI_API_KEY or enter your key in API Settings.',
-        code: 'MISSING_API_KEY',
-      });
-      return;
+    const useOpenRouter = Boolean(customOpenRouterKey && customOpenRouterKey.trim().length > 5);
+
+    let ai: GoogleGenAI | null = null;
+    if (!useOpenRouter) {
+      try {
+        ai = getGeminiClient(customKey);
+      } catch (keyErr: any) {
+        res.status(401).json({
+          success: false,
+          error: keyErr.message || 'AI API key is required. Please enter an OpenRouter API key or Gemini API key in API Settings (top right).',
+          code: 'MISSING_API_KEY',
+        });
+        return;
+      }
     }
 
     let extractedDocText = textContent || '';
@@ -461,15 +541,72 @@ Do NOT return an empty questions list. Extract or formulate high-quality questio
 
     contents.push({ text: userPrompt });
 
-    const genResult = await generateContentWithFallback(ai, {
-      contents,
-      systemInstruction,
-      responseMimeType: 'application/json',
-    });
+    let responseText = '';
 
-    const responseText = genResult.text;
+    if (useOpenRouter && customOpenRouterKey) {
+      // Build OpenRouter messages
+      const userParts: any[] = [{ type: 'text', text: userPrompt }];
+
+      for (const asset of currentAssets) {
+        if (asset.dataUrl && asset.dataUrl.startsWith('data:image/')) {
+          userParts.push({
+            type: 'image_url',
+            image_url: { url: asset.dataUrl },
+          });
+          userParts.push({
+            type: 'text',
+            text: `[Visual Exhibit Attachment: Asset ID "${asset.assetId}" for section "${asset.associatedSection || 'Case'}"]`,
+          });
+        }
+      }
+
+      if (isDirectImage && fileBase64) {
+        const dataUrl = fileBase64.startsWith('data:')
+          ? fileBase64
+          : `data:${mimeType || 'image/jpeg'};base64,${fileBase64}`;
+        userParts.push({
+          type: 'image_url',
+          image_url: { url: dataUrl },
+        });
+      }
+
+      const orResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${customOpenRouterKey.trim()}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://formcraft.ai',
+          'X-Title': 'FormCraft AI',
+        },
+        body: JSON.stringify({
+          model: openRouterModel || 'google/gemini-2.5-flash',
+          messages: [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: userParts.length === 1 ? userParts[0].text : userParts },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.2,
+        }),
+      });
+
+      if (!orResponse.ok) {
+        const orErr = await orResponse.json().catch(() => ({}));
+        throw new Error(orErr.error?.message || `OpenRouter API error (Status ${orResponse.status})`);
+      }
+
+      const orData = await orResponse.json();
+      responseText = orData.choices?.[0]?.message?.content || '';
+    } else if (ai) {
+      const genResult = await generateContentWithFallback(ai, {
+        contents,
+        systemInstruction,
+        responseMimeType: 'application/json',
+      });
+      responseText = genResult.text || '';
+    }
+
     if (!responseText) {
-      throw new Error('Gemini returned an empty response. Please try again.');
+      throw new Error('AI service returned an empty response. Please try again.');
     }
 
     let parsedData: any;
@@ -1152,12 +1289,50 @@ app.post('/api/forms/create', async (req: Request, res: Response): Promise<void>
 
       if (!batchRes.ok) {
         const batchErr = await batchRes.json().catch(() => ({}));
-        console.error('Google Forms batchUpdate error:', batchErr);
-        res.status(batchRes.status).json({
-          error: batchErr.error?.message || 'Failed to populate form items.',
-          details: batchErr,
+        console.warn('Primary Google Forms batchUpdate failed. Running resilient recovery pass...', batchErr);
+
+        // Resilient Recovery Pass: Strip image properties and re-sanitize options to guarantee form items succeed
+        const fallbackRequests = requests.map((req) => {
+          if (req.createItem?.item?.questionItem?.image) {
+            const stripped = JSON.parse(JSON.stringify(req.createItem.item));
+            if (stripped.questionItem) {
+              delete stripped.questionItem.image;
+            }
+            return {
+              createItem: {
+                ...req.createItem,
+                item: stripped,
+              },
+            };
+          }
+          return req;
         });
-        return;
+
+        const retryRes = await fetch(`https://forms.googleapis.com/v1/forms/${formId}:batchUpdate`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            includeFormInResponse: true,
+            requests: fallbackRequests,
+          }),
+        });
+
+        if (!retryRes.ok) {
+          const retryErr = await retryRes.json().catch(() => ({}));
+          console.error('Google Forms batchUpdate fallback also failed:', retryErr);
+          const errMsg =
+            retryErr.error?.message ||
+            batchErr.error?.message ||
+            `Google Forms rejected items batchUpdate (Status ${retryRes.status}).`;
+          res.status(retryRes.status).json({
+            error: errMsg,
+            details: retryErr,
+          });
+          return;
+        }
       }
     }
 
