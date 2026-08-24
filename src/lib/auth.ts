@@ -76,6 +76,15 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
     console.error('Sign-in error:', error);
+    if (error.code === 'auth/popup-closed-by-user') {
+      throw new Error('Sign-in popup was closed before completing. Please try again.');
+    } else if (error.code === 'auth/cancelled-popup-request') {
+      throw new Error('Sign-in request was cancelled. Please try again.');
+    } else if (error.code === 'auth/popup-blocked') {
+      throw new Error('Sign-in popup was blocked by browser. Please allow popups for this site.');
+    } else if (error.message && error.message.includes('api-key-not-valid')) {
+      throw new Error('Firebase API key is invalid or unauthorized. You can set your own API key in the top navigation "API Key" settings.');
+    }
     throw error;
   } finally {
     isSigningIn = false;
