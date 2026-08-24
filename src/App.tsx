@@ -346,16 +346,25 @@ export default function App() {
             openRouterModel: openRouterModel || DEFAULT_OPENROUTER_MODEL,
           }),
         });
-      } catch (fetchErr: any) {
-        if (fetchErr.name === 'AbortError') {
+
+        rawText = await response.text();
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          data = JSON.parse(rawText);
+        } else {
+          console.error('Response was not JSON:', rawText.slice(0, 200));
+          throw new Error('Server returned an invalid response (not JSON).');
+        }
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
           throw new Error(
             'Document processing timed out after 3 minutes. Please click "Retry Processing" or configure an OpenRouter API key in API Settings.'
           );
         }
 
-        // Direct browser fallback if backend server is unreachable
+        // Direct browser fallback if backend server is unreachable or returned invalid JSON
         if (cleanOrKey) {
-          console.info('Backend unreachable, executing direct OpenRouter client parsing...');
+          console.info('Backend unreachable or invalid response, executing direct OpenRouter client parsing...');
           const orSchema = await parseDocumentDirectOpenRouter({
             fileBase64: payload.fileBase64,
             mimeType: payload.mimeType,
@@ -379,21 +388,12 @@ export default function App() {
           return;
         }
 
-        const netMsg = fetchErr.message ? ` (${fetchErr.message})` : '';
+        const netMsg = err.message ? ` (${err.message})` : '';
         throw new Error(
           `Unable to connect to the document parsing service${netMsg}. Please check your internet connection or verify your API key in Settings.`
         );
       } finally {
         clearTimeout(timeoutId);
-      }
-
-      let data: any = null;
-      let rawText = '';
-      try {
-        rawText = await response.text();
-        data = rawText ? JSON.parse(rawText) : null;
-      } catch (jsonErr) {
-        console.warn('Response was not valid JSON:', jsonErr, rawText.slice(0, 150));
       }
 
       if (!response.ok || !data?.success) {
