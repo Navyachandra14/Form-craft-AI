@@ -57,10 +57,8 @@ app.get('/api/assets/:assetId', (req: Request, res: Response): void => {
 });
 
 // Gemini client resolver supporting both custom user-supplied API key and server environment keys
-let defaultAiClient: GoogleGenAI | null = null;
-
 function getGeminiClient(customApiKey?: string): GoogleGenAI {
-  const apiKey = customApiKey?.trim();
+  const apiKey = customApiKey?.trim() || process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) {
     throw new Error(
       'Gemini API key is missing. Please enter your Google Gemini API key in the API Settings modal (top-right navigation).'

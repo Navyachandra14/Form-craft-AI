@@ -15,6 +15,64 @@ import {
   Flame,
 } from 'lucide-react';
 import { STORAGE_KEY_FIREBASE, getFirebaseApiKey } from '../lib/firebase';
+import { GoogleGenAI } from '@google/genai';
+
+async function validateGeminiKeyDirect(key: string): Promise<{ valid: boolean; message: string }> {
+  const cleanKey = key.trim();
+  if (!cleanKey) {
+    return { valid: false, message: 'Please enter a valid Gemini API key.' };
+  }
+
+  // Model list to test in sequence
+  const testModels = ['gemini-3.7-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+
+  let lastErr: any = null;
+  for (const model of testModels) {
+    try {
+      const ai = new GoogleGenAI({ apiKey: cleanKey });
+      const response = await ai.models.generateContent({
+        model,
+        contents: 'Ping test. Reply with "pong".',
+      });
+      if (response && response.text) {
+        return {
+          valid: true,
+          message: `Gemini API key verified successfully! Active connection established via ${model}.`,
+        };
+      }
+    } catch (err: any) {
+      lastErr = err;
+      const msg = String(err?.message || err?.details || '').toLowerCase();
+      // If API key itself is explicitly invalid, break early
+      if (msg.includes('api_key_invalid') || msg.includes('api key not valid') || msg.includes('400')) {
+        break;
+      }
+    }
+  }
+
+  const errorString = String(lastErr?.message || lastErr || '');
+  if (
+    errorString.includes('API_KEY_INVALID') ||
+    errorString.includes('API key not valid') ||
+    errorString.includes('400')
+  ) {
+    return {
+      valid: false,
+      message: 'Google rejected the API key as invalid. Please check your key at aistudio.google.com/apikey and paste the full string.',
+    };
+  }
+  if (errorString.includes('PERMISSION_DENIED') || errorString.includes('403')) {
+    return {
+      valid: false,
+      message: 'API Key permission denied. Ensure Generative Language API is enabled for your Google Cloud project.',
+    };
+  }
+
+  return {
+    valid: false,
+    message: errorString || 'Unable to connect to Google Gemini with this API key.',
+  };
+}
 
 interface ApiKeyModalProps {
   isOpen: boolean;
@@ -79,27 +137,71 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     setValidationStatus(null);
 
     try {
-      const res = await fetch('/api/validate-gemini-key', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-gemini-api-key': keyToTest,
-        },
-        body: JSON.stringify({ apiKey: keyToTest }),
-      });
+      let isVerified = false;
+      let statusMessage = '';
 
-      const data = await res.json();
-      if (res.ok && data.valid) {
+      // 1. If a custom key is provided, try direct validation first for instant verification
+      if (keyToTest) {
+        const directTest = await validateGeminiKeyDirect(keyToTest);
+        if (directTest.valid) {
+          isVerified = true;
+          statusMessage = directTest.message;
+        } else if (
+          directTest.message.includes('Google rejected') ||
+          directTest.message.includes('permission denied')
+        ) {
+          // Hard rejection from Google AI
+          setValidationStatus({
+            tested: true,
+            valid: false,
+            message: directTest.message,
+          });
+          return;
+        } else {
+          statusMessage = directTest.message;
+        }
+      }
+
+      // 2. If not verified directly or testing server fallback key, query the server endpoint
+      if (!isVerified) {
+        try {
+          const res = await fetch('/api/validate-gemini-key', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-gemini-api-key': keyToTest,
+            },
+            body: JSON.stringify({ apiKey: keyToTest }),
+          });
+
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const data = await res.json();
+            if (res.ok && data.valid) {
+              isVerified = true;
+              statusMessage = data.message || 'Gemini API key is active and verified!';
+            } else if (data.error) {
+              statusMessage = data.error;
+            }
+          }
+        } catch (serverErr) {
+          console.warn('Server validation endpoint returned notice:', serverErr);
+        }
+      }
+
+      if (isVerified) {
         setValidationStatus({
           tested: true,
           valid: true,
-          message: data.message || 'Gemini API key is active and verified!',
+          message: statusMessage || 'Gemini API key is active and verified!',
         });
       } else {
         setValidationStatus({
           tested: true,
           valid: false,
-          message: data.error || 'Failed to validate API key with Gemini.',
+          message:
+            statusMessage ||
+            'Unable to verify API key with Google Gemini. Please check that your key was copied correctly from Google AI Studio.',
         });
       }
     } catch (err: any) {

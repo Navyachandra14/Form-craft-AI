@@ -93,9 +93,9 @@ export interface GenerateOptions {
  * High-availability cascade with independent quota pools.
  */
 const ACTIVE_FALLBACK_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-3.1-flash-lite',
   'gemini-3.7-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3.1-pro-preview',
 ];
 
 /**

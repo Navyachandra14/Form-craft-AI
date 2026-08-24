@@ -75,15 +75,24 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     cachedAccessToken = credential.accessToken;
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
-    console.error('Sign-in error:', error);
-    if (error.code === 'auth/popup-closed-by-user') {
+    console.warn('Google Sign-in exception:', error);
+    const msg = String(error?.message || error?.code || '');
+    if (error?.code === 'auth/popup-closed-by-user') {
       throw new Error('Sign-in popup was closed before completing. Please try again.');
-    } else if (error.code === 'auth/cancelled-popup-request') {
+    } else if (error?.code === 'auth/cancelled-popup-request') {
       throw new Error('Sign-in request was cancelled. Please try again.');
-    } else if (error.code === 'auth/popup-blocked') {
+    } else if (error?.code === 'auth/popup-blocked') {
       throw new Error('Sign-in popup was blocked by browser. Please allow popups for this site.');
-    } else if (error.message && error.message.includes('api-key-not-valid')) {
-      throw new Error('Firebase API key is invalid or unauthorized. You can set your own API key in the top navigation "API Key" settings.');
+    } else if (
+      msg.includes('api-keys-are-not-supported') ||
+      msg.includes('api-key-not-valid') ||
+      msg.includes('invalid-api-key') ||
+      error?.code === 'auth/invalid-api-key' ||
+      error?.code === 'auth/api-key-not-valid'
+    ) {
+      throw new Error(
+        'Google Authentication requires a Firebase Web API Key with Identity Toolkit enabled (from Firebase Console). If you have your Firebase Web API key, you can enter it in the top navigation "API Key" -> "Firebase & Auth" tab.'
+      );
     }
     throw error;
   } finally {

@@ -634,9 +634,20 @@ export default function App() {
         {errorMessage && step !== 'error' && (
           <div className="mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm flex items-start gap-3 shadow-2xs">
             <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="font-bold">Notice</p>
-              <p className="mt-0.5 text-rose-700">{errorMessage}</p>
+            <div className="flex-1 space-y-2">
+              <div>
+                <p className="font-bold">Notice</p>
+                <p className="mt-0.5 text-rose-700 leading-relaxed">{errorMessage}</p>
+              </div>
+              {errorMessage.toLowerCase().includes('api key') && (
+                <button
+                  type="button"
+                  onClick={() => setIsApiKeyModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-900 text-white text-xs font-bold hover:bg-rose-800 transition-colors shadow-2xs cursor-pointer"
+                >
+                  <span>Open API Key Settings</span>
+                </button>
+              )}
             </div>
             <button
               onClick={() => setErrorMessage(null)}
