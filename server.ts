@@ -60,40 +60,21 @@ app.get('/api/assets/:assetId', (req: Request, res: Response): void => {
 let defaultAiClient: GoogleGenAI | null = null;
 
 function getGeminiClient(customApiKey?: string): GoogleGenAI {
-  const apiKey =
-    customApiKey?.trim() ||
-    process.env.GEMINI_API_KEY?.trim() ||
-    process.env.GOOGLE_API_KEY?.trim() ||
-    process.env.GOOGLE_GENAI_API_KEY?.trim() ||
-    process.env.VITE_GEMINI_API_KEY?.trim();
+  const apiKey = customApiKey?.trim();
   if (!apiKey) {
     throw new Error(
-      'Gemini API key is missing. Please enter your Google Gemini API key in the API Settings modal (top-right navigation) or configure GEMINI_API_KEY in your environment.'
+      'Gemini API key is missing. Please enter your Google Gemini API key in the API Settings modal (top-right navigation).'
     );
   }
   
-  if (customApiKey?.trim()) {
-    return new GoogleGenAI({
-      apiKey: customApiKey.trim(),
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
+  return new GoogleGenAI({
+    apiKey: apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
       },
-    });
-  }
-
-  if (!defaultAiClient) {
-    defaultAiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
-  }
-  return defaultAiClient;
+    },
+  });
 }
 
 // Health check endpoint
